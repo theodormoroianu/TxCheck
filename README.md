@@ -25,6 +25,29 @@ We provide scripts to quickly set up the necessary environments and test specifi
 
 By following the scripts, TxCheck can find the bugs listed in [Found Bugs](#found-bugs) (given enough time). For quick evaluation, you could use the above MySQL script to set up the testing, where TxCheck might find a transactional bug in MySQL 8.0.28 within 15 minutes. 
 
+## Build TxCheck on Fedora
+
+Make sure that `mysql`, `mysql-devel` and other required packages are installed (the compiler will complain otherwise).
+
+The latest versions (`7.x`) of `pqxx` does not support `C++11`, so we need to install an older version of `pqxx`.
+
+```shell
+wget https://github.com/jtv/libpqxx/archive/refs/tags/6.4.7.zip
+unzip 6.4.7.zip
+cd libpqxx-6.4.7
+./configure --disable-documentation
+make -j8
+sudo make install
+```
+
+For building `TxCheck`, we need to add a searchpath for the `mysql` header files.
+```shell
+autoreconf -if
+./configure LDFLAGS="-L/usr/lib64/mysql"
+make -j
+```
+
+
 ## Build TxCheck in Debian
 
 ```shell
