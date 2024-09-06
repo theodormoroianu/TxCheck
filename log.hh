@@ -12,24 +12,29 @@
 #include "dut.hh"
 
 /// logger base class
-struct logger {
-    virtual void generated(prod &query) {(void)query; }
-    virtual void executed(prod &query) {(void)query; }
-    virtual void error(prod &query, const dut::failure &e) {
+struct logger
+{
+    virtual void generated(prod &query) { (void)query; }
+    virtual void executed(prod &query) { (void)query; }
+    virtual void error(prod &query, const dut::failure &e)
+    {
         (void)query, (void)e;
     }
 };
 
 /// logger to dump all generated queries
-struct query_dumper : logger {
-    virtual void generated(prod &query) {
+struct query_dumper : logger
+{
+    virtual void generated(prod &query)
+    {
         query.out(std::cout);
         std::cout << ";" << std::endl;
     }
 };
 
 /// logger for statistics collection
-struct stats_collecting_logger : logger {
+struct stats_collecting_logger : logger
+{
     long queries = 0;
     float sum_nodes = 0;
     float sum_height = 0;
@@ -38,7 +43,8 @@ struct stats_collecting_logger : logger {
 };
 
 /// stderr logger
-struct cerr_logger : stats_collecting_logger {
+struct cerr_logger : stats_collecting_logger
+{
     const int columns = 80;
     std::map<std::string, long> errors;
     virtual void report();
@@ -49,7 +55,8 @@ struct cerr_logger : stats_collecting_logger {
 };
 
 /// logger to postgres database
-struct pqxx_logger : stats_collecting_logger {
+struct pqxx_logger : stats_collecting_logger
+{
     long id;
     std::shared_ptr<pqxx::connection> c;
     pqxx_logger(std::string target, std::string conninfo, struct schema &s);

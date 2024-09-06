@@ -19,80 +19,100 @@ using namespace std;
 
 // START_DEPEND: the begin is count by first read or write
 // STRICT_START_DEPEND: the begin is count by begin statement
-enum dependency_type {WRITE_READ, WRITE_WRITE, READ_WRITE, 
-                        START_DEPEND, STRICT_START_DEPEND, INSTRUMENT_DEPEND,
-                        VERSION_SET_DEPEND, OVERWRITE_DEPEND,
-                        INNER_DEPEND
-                        }; // for predicate
+enum dependency_type
+{
+    WRITE_READ,
+    WRITE_WRITE,
+    READ_WRITE,
+    START_DEPEND,
+    STRICT_START_DEPEND,
+    INSTRUMENT_DEPEND,
+    VERSION_SET_DEPEND,
+    OVERWRITE_DEPEND,
+    INNER_DEPEND
+}; // for predicate
 
-typedef vector<string> row_output; // a row consists of several field(string)
+typedef vector<string> row_output;      // a row consists of several field(string)
 typedef vector<row_output> stmt_output; // one output consits of several rows
 
-struct operate_unit {
+struct operate_unit
+{
     stmt_usage stmt_u;
     int write_op_id;
     int tid;
     int stmt_idx;
     int row_id;
     size_t hash;
-    operate_unit(stmt_usage use, int op_id, int tid, int stmt_idx, int row_id, size_t hash):
-        stmt_u(use), write_op_id(op_id), 
-        tid(tid), stmt_idx(stmt_idx), 
-        row_id(row_id), hash(hash) {}
+    operate_unit(stmt_usage use, int op_id, int tid, int stmt_idx, int row_id, size_t hash) : stmt_u(use), write_op_id(op_id),
+                                                                                              tid(tid), stmt_idx(stmt_idx),
+                                                                                              row_id(row_id), hash(hash) {}
 };
 
-struct row_change_history {
+struct row_change_history
+{
     int row_id;
     vector<operate_unit> row_op_list;
 };
 
-struct history {
+struct history
+{
     vector<row_change_history> change_history;
-    void insert_to_history(operate_unit& oper_unit);
+    void insert_to_history(operate_unit &oper_unit);
 };
 
-struct stmt_id {
+struct stmt_id
+{
     int txn_id;
     int stmt_idx_in_txn;
-    bool operator==(const stmt_id& other_id) const {
-        return this->txn_id == other_id.txn_id && 
-                this->stmt_idx_in_txn == other_id.stmt_idx_in_txn;
+    bool operator==(const stmt_id &other_id) const
+    {
+        return this->txn_id == other_id.txn_id &&
+               this->stmt_idx_in_txn == other_id.stmt_idx_in_txn;
     }
 
-    bool operator<(const stmt_id& other_id) const {
-        if (this->txn_id == other_id.txn_id) 
+    bool operator<(const stmt_id &other_id) const
+    {
+        if (this->txn_id == other_id.txn_id)
             return this->stmt_idx_in_txn < other_id.stmt_idx_in_txn;
-        else 
+        else
             return this->txn_id < other_id.txn_id;
     }
 
-    stmt_id(vector<int>& final_tid_queue, int stmt_idx);
-    stmt_id() {txn_id = -1; stmt_idx_in_txn = -1;}
-    stmt_id(int tid, int stmt_pos) {txn_id = tid; stmt_idx_in_txn = stmt_pos;}
-    int transfer_2_stmt_idx(vector<int>& final_tid_queue);
+    stmt_id(vector<int> &final_tid_queue, int stmt_idx);
+    stmt_id()
+    {
+        txn_id = -1;
+        stmt_idx_in_txn = -1;
+    }
+    stmt_id(int tid, int stmt_pos)
+    {
+        txn_id = tid;
+        stmt_idx_in_txn = stmt_pos;
+    }
+    int transfer_2_stmt_idx(vector<int> &final_tid_queue);
 };
 
 struct dependency_analyzer
 {
-    dependency_analyzer(vector<stmt_output>& init_output,
-                        vector<stmt_output>& total_output,
-                        vector<int>& final_tid_queue,
-                        vector<stmt_usage>& final_stmt_usage,
-                        vector<txn_status>& final_txn_status,
+    dependency_analyzer(vector<stmt_output> &init_output,
+                        vector<stmt_output> &total_output,
+                        vector<int> &final_tid_queue,
+                        vector<stmt_usage> &final_stmt_usage,
+                        vector<txn_status> &final_txn_status,
                         int t_num,
                         int primary_key_idx,
                         int write_op_key_idx);
     ~dependency_analyzer();
 
-    size_t hash_output(row_output& row);
-    void build_WR_dependency(vector<operate_unit>& op_list, int op_idx);
-    void build_RW_dependency(vector<operate_unit>& op_list, int op_idx);
-    void build_WW_dependency(vector<operate_unit>& op_list, int op_idx);
+    size_t hash_output(row_output &row);
+    void build_WR_dependency(vector<operate_unit> &op_list, int op_idx);
+    void build_RW_dependency(vector<operate_unit> &op_list, int op_idx);
+    void build_WW_dependency(vector<operate_unit> &op_list, int op_idx);
 
     // for predicate
     void build_VS_dependency();
     void build_OW_dependency();
-    
+
     void build_stmt_inner_dependency();
     void build_start_dependency();
     void build_stmt_instrument_dependency();
@@ -100,7 +120,7 @@ struct dependency_analyzer
     void build_stmt_start_dependency(int prev_tid, int later_tid, dependency_type dt);
 
     void print_dependency_graph();
-    
+
     // G1a: Aborted Reads. A history H exhibits phenomenon G1a if it contains an aborted
     // transaction Ti and a committed transaction Tj such that Tj has read some object
     // (maybe via a predicate) modified by Ti.
@@ -125,16 +145,16 @@ struct dependency_analyzer
     // a directed cycle with exactly one anti-dependency edge.
     bool check_GSIb();
 
-    bool check_cycle(set<dependency_type>& edge_types);
+    bool check_cycle(set<dependency_type> &edge_types);
     static bool reduce_graph_indegree(int **direct_graph, int length);
     static bool reduce_graph_outdegree(int **direct_graph, int length);
 
     history h;
     int tid_num;
     int stmt_num;
-    int* tid_begin_idx; // idx of first non-start transaction
-    int* tid_strict_begin_idx; // idx of start transaction
-    int* tid_end_idx;
+    int *tid_begin_idx;        // idx of first non-start transaction
+    int *tid_strict_begin_idx; // idx of start transaction
+    int *tid_end_idx;
 
     int primary_key_index;
     int version_key_index;
@@ -146,19 +166,19 @@ struct dependency_analyzer
     vector<stmt_output> f_stmt_output;
     map<int, row_output> hash_to_output;
     set<dependency_type> **dependency_graph;
-    void check_txn_graph_cycle(set<int>& cycle_nodes, vector<int>& sorted_nodes);
+    void check_txn_graph_cycle(set<int> &cycle_nodes, vector<int> &sorted_nodes);
 
     map<pair<stmt_id, stmt_id>, set<dependency_type>> stmt_dependency_graph;
     void build_stmt_depend_from_stmt_idx(int stmt_idx1, int stmt_idx2, dependency_type dt);
-    vector<stmt_id> longest_stmt_path(map<pair<stmt_id, stmt_id>, int>& stmt_dist_graph);
+    vector<stmt_id> longest_stmt_path(map<pair<stmt_id, stmt_id>, int> &stmt_dist_graph);
     vector<stmt_id> longest_stmt_path();
-    vector<stmt_id> topological_sort_path(set<stmt_id> deleted_nodes, bool* delete_flag = NULL);
+    vector<stmt_id> topological_sort_path(set<stmt_id> deleted_nodes, bool *delete_flag = NULL);
 
     vector<vector<stmt_id>> get_all_topo_sort_path();
     void recur_topo_sort(vector<stmt_id> current_path,
                          set<stmt_id> deleted_nodes,
-                         vector<vector<stmt_id>>& total_path,
-                         map<pair<stmt_id, stmt_id>, set<dependency_type>>& graph);
+                         vector<vector<stmt_id>> &total_path,
+                         map<pair<stmt_id, stmt_id>, set<dependency_type>> &graph);
 };
 
 #endif

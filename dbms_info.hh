@@ -8,22 +8,25 @@
 
 using namespace std;
 
-struct dbms_info {
+struct dbms_info
+{
     string dbms_name;
     string test_db;
     int test_port;
     int ouput_or_affect_num;
     bool can_trigger_error_in_txn;
 
-    dbms_info(map<string,string>& options);
-    dbms_info() {
+    dbms_info(map<string, string> &options);
+    dbms_info()
+    {
         dbms_name = "";
         test_db = "";
         test_port = 0;
         ouput_or_affect_num = 0;
         can_trigger_error_in_txn = false;
     };
-    void operator=(dbms_info& target) {
+    void operator=(dbms_info &target)
+    {
         dbms_name = target.dbms_name;
         test_db = target.test_db;
         test_port = target.test_port;

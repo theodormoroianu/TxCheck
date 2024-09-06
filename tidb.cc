@@ -10,16 +10,17 @@
 #else
 #include <boost/regex.hpp>
 using boost::regex;
-using boost::smatch;
 using boost::regex_match;
+using boost::smatch;
 #endif
 
 using namespace std;
 
 static regex e_unknown_database(".*Unknown database.*");
 static regex e_crash(".*Lost connection.*");
-  
-extern "C"  {
+
+extern "C"
+{
 #include <mysql/mysql.h>
 #include <unistd.h>
 }
@@ -28,14 +29,14 @@ tidb_connection::tidb_connection(string db, unsigned int port)
 {
     test_db = db;
     test_port = port;
-    
+
     if (!mysql_init(&mysql))
         throw std::runtime_error(string(mysql_error(&mysql)) + " in tidb_connection!");
 
     // password null: blank (empty) password field
-    if (mysql_real_connect(&mysql, "127.0.0.1", "root", NULL, test_db.c_str(), test_port, NULL, 0)) 
+    if (mysql_real_connect(&mysql, "127.0.0.1", "root", NULL, test_db.c_str(), test_port, NULL, 0))
         return; // success
-    
+
     string err = mysql_error(&mysql);
     if (!regex_match(err, e_unknown_database))
         throw std::runtime_error("BUG!!!" + string(mysql_error(&mysql)) + " in tidb_connection!");
@@ -44,7 +45,7 @@ tidb_connection::tidb_connection(string db, unsigned int port)
     cerr << test_db + " does not exist, use default db" << endl;
     if (!mysql_real_connect(&mysql, "127.0.0.1", "root", NULL, NULL, port, NULL, 0))
         throw std::runtime_error(string(mysql_error(&mysql)) + " in tidb_connection!");
-    
+
     cerr << "create database " + test_db << endl;
     string create_sql = "create database " + test_db + "; ";
     if (mysql_real_query(&mysql, create_sql.c_str(), create_sql.size()))
@@ -66,18 +67,20 @@ tidb_connection::~tidb_connection()
 }
 
 schema_tidb::schema_tidb(string db, unsigned int port)
-  : tidb_connection(db, port)
+    : tidb_connection(db, port)
 {
     // cerr << "Loading tables...";
     string get_table_query = "SELECT DISTINCT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES \
-        WHERE TABLE_SCHEMA='" + db + "' AND \
+        WHERE TABLE_SCHEMA='" +
+                             db + "' AND \
               TABLE_TYPE='BASE TABLE' ORDER BY 1;";
-    
+
     if (mysql_real_query(&mysql, get_table_query.c_str(), get_table_query.size()))
         throw std::runtime_error(string(mysql_error(&mysql)) + " in schema_tidb (load table list)!");
-    
+
     auto result = mysql_store_result(&mysql);
-    while (auto row = mysql_fetch_row(result)) {
+    while (auto row = mysql_fetch_row(result))
+    {
         table tab(row[0], "main", true, true);
         tables.push_back(tab);
     }
@@ -86,12 +89,14 @@ schema_tidb::schema_tidb(string db, unsigned int port)
 
     // cerr << "Loading views...";
     string get_view_query = "select distinct table_name from information_schema.views \
-        where table_schema='" + db + "' order by 1;";
+        where table_schema='" +
+                            db + "' order by 1;";
     if (mysql_real_query(&mysql, get_view_query.c_str(), get_view_query.size()))
         throw std::runtime_error(string(mysql_error(&mysql)) + " in schema_tidb (load view list)!");
-    
+
     result = mysql_store_result(&mysql);
-    while (auto row = mysql_fetch_row(result)) {
+    while (auto row = mysql_fetch_row(result))
+    {
         table tab(row[0], "main", false, false);
         tables.push_back(tab);
     }
@@ -100,7 +105,8 @@ schema_tidb::schema_tidb(string db, unsigned int port)
 
     // cerr << "Loading indexes...";
     string get_index_query = "SELECT DISTINCT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS \
-                WHERE TABLE_SCHEMA='" + db + "' AND \
+                WHERE TABLE_SCHEMA='" +
+                             db + "' AND \
                     NON_UNIQUE=1 AND \
                     INDEX_NAME <> COLUMN_NAME AND \
                     INDEX_NAME <> 'PRIMARY' ORDER BY 1;";
@@ -108,21 +114,26 @@ schema_tidb::schema_tidb(string db, unsigned int port)
         throw std::runtime_error(string(mysql_error(&mysql)) + " in schema_tidb (load index list)!");
 
     result = mysql_store_result(&mysql);
-    while (auto row = mysql_fetch_row(result)) {
+    while (auto row = mysql_fetch_row(result))
+    {
         indexes.push_back(row[0]);
     }
     mysql_free_result(result);
     // cerr << "done." << endl;
 
     // cerr << "Loading columns and constraints...";
-    for (auto& t : tables) {
+    for (auto &t : tables)
+    {
         string get_column_query = "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS \
-                WHERE TABLE_NAME='" + t.ident() + "' AND \
-                    TABLE_SCHEMA='" + db + "'  ORDER BY ORDINAL_POSITION;";
+                WHERE TABLE_NAME='" +
+                                  t.ident() + "' AND \
+                    TABLE_SCHEMA='" +
+                                  db + "'  ORDER BY ORDINAL_POSITION;";
         if (mysql_real_query(&mysql, get_column_query.c_str(), get_column_query.size()))
             throw std::runtime_error(string(mysql_error(&mysql)) + " in schema_tidb (load table " + t.ident() + ")!");
         result = mysql_store_result(&mysql);
-        while (auto row = mysql_fetch_row(result)) {
+        while (auto row = mysql_fetch_row(result))
+        {
             column c(row[0], sqltype::get(row[1]));
             t.columns().push_back(c);
         }
@@ -135,10 +146,12 @@ schema_tidb::schema_tidb(string db, unsigned int port)
     realtype = sqltype::get("double");
     texttype = sqltype::get("text");
 
-#define BINOP(n, a, b, r) do {\
-    op o(#n, a, b, r); \
-    register_operator(o); \
-} while(0)
+#define BINOP(n, a, b, r)     \
+    do                        \
+    {                         \
+        op o(#n, a, b, r);    \
+        register_operator(o); \
+    } while (0)
 
     BINOP(||, texttype, texttype, texttype);
     BINOP(*, inttype, inttype, inttype);
@@ -177,51 +190,63 @@ schema_tidb::schema_tidb(string db, unsigned int port)
     BINOP(and, booltype, booltype, booltype);
     BINOP(or, booltype, booltype, booltype);
     BINOP(xor, booltype, booltype, booltype);
-  
-#define FUNC(n, r) do {							\
-    routine proc("", "", r, #n);				\
-    register_routine(proc);						\
-} while(0)
 
-#define FUNC1(n, r, a) do {						\
-    routine proc("", "", r, #n);				\
-    proc.argtypes.push_back(a);				\
-    register_routine(proc);						\
-} while(0)
+#define FUNC(n, r)                   \
+    do                               \
+    {                                \
+        routine proc("", "", r, #n); \
+        register_routine(proc);      \
+    } while (0)
 
-#define FUNC2(n, r, a, b) do {						\
-    routine proc("", "", r, #n);				\
-    proc.argtypes.push_back(a);				\
-    proc.argtypes.push_back(b);				\
-    register_routine(proc);						\
-} while(0)
+#define FUNC1(n, r, a)               \
+    do                               \
+    {                                \
+        routine proc("", "", r, #n); \
+        proc.argtypes.push_back(a);  \
+        register_routine(proc);      \
+    } while (0)
 
-#define FUNC3(n, r, a, b, c) do {						\
-    routine proc("", "", r, #n);				\
-    proc.argtypes.push_back(a);				\
-    proc.argtypes.push_back(b);				\
-    proc.argtypes.push_back(c);				\
-    register_routine(proc);						\
-} while(0)
+#define FUNC2(n, r, a, b)            \
+    do                               \
+    {                                \
+        routine proc("", "", r, #n); \
+        proc.argtypes.push_back(a);  \
+        proc.argtypes.push_back(b);  \
+        register_routine(proc);      \
+    } while (0)
 
-#define FUNC4(n, r, a, b, c, d) do {						\
-    routine proc("", "", r, #n);				\
-    proc.argtypes.push_back(a);				\
-    proc.argtypes.push_back(b);				\
-    proc.argtypes.push_back(c);				\
-    proc.argtypes.push_back(d);				\
-    register_routine(proc);						\
-} while(0)
+#define FUNC3(n, r, a, b, c)         \
+    do                               \
+    {                                \
+        routine proc("", "", r, #n); \
+        proc.argtypes.push_back(a);  \
+        proc.argtypes.push_back(b);  \
+        proc.argtypes.push_back(c);  \
+        register_routine(proc);      \
+    } while (0)
 
-#define FUNC5(n, r, a, b, c, d, e) do {						\
-    routine proc("", "", r, #n);				\
-    proc.argtypes.push_back(a);				\
-    proc.argtypes.push_back(b);				\
-    proc.argtypes.push_back(c);				\
-    proc.argtypes.push_back(d);				\
-    proc.argtypes.push_back(e);				\
-    register_routine(proc);						\
-} while(0)
+#define FUNC4(n, r, a, b, c, d)      \
+    do                               \
+    {                                \
+        routine proc("", "", r, #n); \
+        proc.argtypes.push_back(a);  \
+        proc.argtypes.push_back(b);  \
+        proc.argtypes.push_back(c);  \
+        proc.argtypes.push_back(d);  \
+        register_routine(proc);      \
+    } while (0)
+
+#define FUNC5(n, r, a, b, c, d, e)   \
+    do                               \
+    {                                \
+        routine proc("", "", r, #n); \
+        proc.argtypes.push_back(a);  \
+        proc.argtypes.push_back(b);  \
+        proc.argtypes.push_back(c);  \
+        proc.argtypes.push_back(d);  \
+        proc.argtypes.push_back(e);  \
+        register_routine(proc);      \
+    } while (0)
 
     // tidb numeric
     FUNC(PI, realtype);
@@ -268,7 +293,7 @@ schema_tidb::schema_tidb(string db, unsigned int port)
     FUNC1(SIGN, inttype, realtype);
     FUNC1(SIGN, inttype, inttype);
     FUNC1(CRC32, inttype, texttype);
-    
+
     FUNC2(instr, inttype, texttype, texttype);
     FUNC2(round, realtype, realtype, inttype);
     FUNC2(substr, texttype, texttype, inttype);
@@ -302,25 +327,31 @@ schema_tidb::schema_tidb(string db, unsigned int port)
 
     FUNC5(EXPORT_SET, texttype, inttype, texttype, texttype, texttype, inttype);
 
-#define AGG1(n, r, a) do {						\
-    routine proc("", "", r, #n);				\
-    proc.argtypes.push_back(a);				\
-    register_aggregate(proc);						\
-} while(0)
+#define AGG1(n, r, a)                \
+    do                               \
+    {                                \
+        routine proc("", "", r, #n); \
+        proc.argtypes.push_back(a);  \
+        register_aggregate(proc);    \
+    } while (0)
 
-#define AGG3(n, r, a, b, c, d) do {						\
-    routine proc("", "", r, #n);				\
-    proc.argtypes.push_back(a);				\
-    proc.argtypes.push_back(b);				\
-    proc.argtypes.push_back(c);				\
-    proc.argtypes.push_back(d);				\
-    register_aggregate(proc);						\
-} while(0)
+#define AGG3(n, r, a, b, c, d)       \
+    do                               \
+    {                                \
+        routine proc("", "", r, #n); \
+        proc.argtypes.push_back(a);  \
+        proc.argtypes.push_back(b);  \
+        proc.argtypes.push_back(c);  \
+        proc.argtypes.push_back(d);  \
+        register_aggregate(proc);    \
+    } while (0)
 
-#define AGG(n, r) do {						\
-    routine proc("", "", r, #n);				\
-    register_aggregate(proc);						\
-} while(0)
+#define AGG(n, r)                    \
+    do                               \
+    {                                \
+        routine proc("", "", r, #n); \
+        register_aggregate(proc);    \
+    } while (0)
 
     AGG1(avg, inttype, inttype);
     AGG1(avg, realtype, realtype);
@@ -336,23 +367,29 @@ schema_tidb::schema_tidb(string db, unsigned int port)
     AGG1(sum, realtype, realtype);
     AGG1(sum, inttype, inttype);
 
-#define WIN(n, r) do {						\
-    routine proc("", "", r, #n);				\
-    register_windows(proc);						\
-} while(0)
+#define WIN(n, r)                    \
+    do                               \
+    {                                \
+        routine proc("", "", r, #n); \
+        register_windows(proc);      \
+    } while (0)
 
-#define WIN1(n, r, a) do {						\
-    routine proc("", "", r, #n);				\
-    proc.argtypes.push_back(a);				\
-    register_windows(proc);						\
-} while(0)
+#define WIN1(n, r, a)                \
+    do                               \
+    {                                \
+        routine proc("", "", r, #n); \
+        proc.argtypes.push_back(a);  \
+        register_windows(proc);      \
+    } while (0)
 
-#define WIN2(n, r, a, b) do {						\
-    routine proc("", "", r, #n);				\
-    proc.argtypes.push_back(a);				\
-    proc.argtypes.push_back(b);				\
-    register_windows(proc);						\
-} while(0)
+#define WIN2(n, r, a, b)             \
+    do                               \
+    {                                \
+        routine proc("", "", r, #n); \
+        proc.argtypes.push_back(a);  \
+        proc.argtypes.push_back(b);  \
+        register_windows(proc);      \
+    } while (0)
 
 #ifndef TEST_CLICKHOUSE
     // ranking window function
@@ -387,41 +424,48 @@ schema_tidb::schema_tidb(string db, unsigned int port)
     generate_indexes();
 
     // enable "atomic_subselect" use specific tables
-    for (auto &t: tables) {
+    for (auto &t : tables)
+    {
         set<sqltype *> type_set_in_table;
-        for (auto &c: t.columns()) { // filter repeated column types
+        for (auto &c : t.columns())
+        { // filter repeated column types
             assert(c.type);
             type_set_in_table.insert(c.type);
         }
 
-        for (auto uniq_type : type_set_in_table) {
-            tables_with_columns_of_type.insert(pair<sqltype*, table*>(uniq_type, &t));
+        for (auto uniq_type : type_set_in_table)
+        {
+            tables_with_columns_of_type.insert(pair<sqltype *, table *>(uniq_type, &t));
         }
     }
 
     // enable operator
-    for (auto &o: operators) {
-        operators_returning_type.insert(pair<sqltype*, op*>(o.result, &o));
+    for (auto &o : operators)
+    {
+        operators_returning_type.insert(pair<sqltype *, op *>(o.result, &o));
     }
 
     // enable aggregate function
-    for(auto &r: aggregates) {
+    for (auto &r : aggregates)
+    {
         assert(r.restype);
-        aggregates_returning_type.insert(pair<sqltype*, routine*>(r.restype, &r));
+        aggregates_returning_type.insert(pair<sqltype *, routine *>(r.restype, &r));
     }
 
     // enable routine function
-    for(auto &r: routines) {
+    for (auto &r : routines)
+    {
         assert(r.restype);
-        routines_returning_type.insert(pair<sqltype*, routine*>(r.restype, &r));
-        if(!r.argtypes.size())
-            parameterless_routines_returning_type.insert(pair<sqltype*, routine*>(r.restype, &r));
+        routines_returning_type.insert(pair<sqltype *, routine *>(r.restype, &r));
+        if (!r.argtypes.size())
+            parameterless_routines_returning_type.insert(pair<sqltype *, routine *>(r.restype, &r));
     }
 
     // enable window function
-    for(auto &r: windows) {
+    for (auto &r : windows)
+    {
         assert(r.restype);
-        windows_returning_type.insert(pair<sqltype*, routine*>(r.restype, &r));
+        windows_returning_type.insert(pair<sqltype *, routine *>(r.restype, &r));
     }
 }
 
@@ -429,14 +473,16 @@ void schema_tidb::update_schema()
 {
     // cerr << "Loading tables...";
     string get_table_query = "SELECT DISTINCT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES \
-        WHERE TABLE_SCHEMA='" + test_db + "' AND \
+        WHERE TABLE_SCHEMA='" +
+                             test_db + "' AND \
               TABLE_TYPE='BASE TABLE' ORDER BY 1;";
-    
+
     if (mysql_real_query(&mysql, get_table_query.c_str(), get_table_query.size()))
         throw std::runtime_error(string(mysql_error(&mysql)) + " in schema_tidb (load table list)!");
-    
+
     auto result = mysql_store_result(&mysql);
-    while (auto row = mysql_fetch_row(result)) {
+    while (auto row = mysql_fetch_row(result))
+    {
         table tab(row[0], "main", true, true);
         tables.push_back(tab);
     }
@@ -445,12 +491,14 @@ void schema_tidb::update_schema()
 
     // cerr << "Loading views...";
     string get_view_query = "select distinct table_name from information_schema.views \
-        where table_schema='" + test_db + "' order by 1;";
+        where table_schema='" +
+                            test_db + "' order by 1;";
     if (mysql_real_query(&mysql, get_view_query.c_str(), get_view_query.size()))
         throw std::runtime_error(string(mysql_error(&mysql)) + " in schema_tidb (load view list)!");
-    
+
     result = mysql_store_result(&mysql);
-    while (auto row = mysql_fetch_row(result)) {
+    while (auto row = mysql_fetch_row(result))
+    {
         table tab(row[0], "main", false, false);
         tables.push_back(tab);
     }
@@ -459,7 +507,8 @@ void schema_tidb::update_schema()
 
     // cerr << "Loading indexes...";
     string get_index_query = "SELECT DISTINCT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS \
-                WHERE TABLE_SCHEMA='" + test_db + "' AND \
+                WHERE TABLE_SCHEMA='" +
+                             test_db + "' AND \
                     NON_UNIQUE=1 AND \
                     INDEX_NAME <> COLUMN_NAME AND \
                     INDEX_NAME <> 'PRIMARY' ORDER BY 1;";
@@ -467,21 +516,26 @@ void schema_tidb::update_schema()
         throw std::runtime_error(string(mysql_error(&mysql)) + " in schema_tidb (load index list)!");
 
     result = mysql_store_result(&mysql);
-    while (auto row = mysql_fetch_row(result)) {
+    while (auto row = mysql_fetch_row(result))
+    {
         indexes.push_back(row[0]);
     }
     mysql_free_result(result);
     // cerr << "done." << endl;
 
     // cerr << "Loading columns and constraints...";
-    for (auto& t : tables) {
+    for (auto &t : tables)
+    {
         string get_column_query = "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS \
-                WHERE TABLE_NAME='" + t.ident() + "' AND \
-                    TABLE_SCHEMA='" + test_db + "'  ORDER BY ORDINAL_POSITION;";
+                WHERE TABLE_NAME='" +
+                                  t.ident() + "' AND \
+                    TABLE_SCHEMA='" +
+                                  test_db + "'  ORDER BY ORDINAL_POSITION;";
         if (mysql_real_query(&mysql, get_column_query.c_str(), get_column_query.size()))
             throw std::runtime_error(string(mysql_error(&mysql)) + " in schema_tidb (load table " + t.ident() + ")!");
         result = mysql_store_result(&mysql);
-        while (auto row = mysql_fetch_row(result)) {
+        while (auto row = mysql_fetch_row(result))
+        {
             column c(row[0], sqltype::get(row[1]));
             t.columns().push_back(c);
         }
@@ -491,44 +545,50 @@ void schema_tidb::update_schema()
     return;
 }
 
-
 dut_tidb::dut_tidb(string db, unsigned int port)
-  : tidb_connection(db, port)
+    : tidb_connection(db, port)
 {
 }
 
-void dut_tidb::test(const std::string &stmt, vector<vector<string>>* output, int* affected_row_num)
+void dut_tidb::test(const std::string &stmt, vector<vector<string>> *output, int *affected_row_num)
 {
-    if (mysql_real_query(&mysql, stmt.c_str(), stmt.size())) {
+    if (mysql_real_query(&mysql, stmt.c_str(), stmt.size()))
+    {
         string err = mysql_error(&mysql);
         auto result = mysql_store_result(&mysql);
         mysql_free_result(result);
-        if (err.find("Commands out of sync") != string::npos) {// occasionally happens, retry the statement again
+        if (err.find("Commands out of sync") != string::npos)
+        { // occasionally happens, retry the statement again
             cerr << err << ", repeat the statement again" << endl;
             test(stmt, output, affected_row_num);
             return;
         }
-        if (regex_match(err, e_crash)) {
-            throw std::runtime_error("BUG!!! " + err + " in mysql::test"); 
+        if (regex_match(err, e_crash))
+        {
+            throw std::runtime_error("BUG!!! " + err + " in mysql::test");
         }
-        throw std::runtime_error(err + " in mysql::test"); 
+        throw std::runtime_error(err + " in mysql::test");
     }
 
     if (affected_row_num)
         *affected_row_num = mysql_affected_rows(&mysql);
 
     auto result = mysql_store_result(&mysql);
-    if (output && result) {
+    if (output && result)
+    {
         auto row_num = mysql_num_rows(result);
-        if (row_num == 0) {
+        if (row_num == 0)
+        {
             mysql_free_result(result);
             return;
         }
 
         auto column_num = mysql_num_fields(result);
-        while (auto row = mysql_fetch_row(result)) {
+        while (auto row = mysql_fetch_row(result))
+        {
             vector<string> row_output;
-            for (int i = 0; i < column_num; i++) {
+            for (int i = 0; i < column_num; i++)
+            {
                 string str;
                 if (row[i] == NULL)
                     str = "NULL";
@@ -545,7 +605,8 @@ void dut_tidb::test(const std::string &stmt, vector<vector<string>>* output, int
 void dut_tidb::reset(void)
 {
     string drop_sql = "drop database if exists " + test_db + "; ";
-    if (mysql_real_query(&mysql, drop_sql.c_str(), drop_sql.size())) {
+    if (mysql_real_query(&mysql, drop_sql.c_str(), drop_sql.size()))
+    {
         string err = mysql_error(&mysql);
         throw std::runtime_error(err + " in mysql::reset");
     }
@@ -553,7 +614,8 @@ void dut_tidb::reset(void)
     mysql_free_result(res_sql);
 
     string create_sql = "create database " + test_db + "; ";
-    if (mysql_real_query(&mysql, create_sql.c_str(), create_sql.size())) {
+    if (mysql_real_query(&mysql, create_sql.c_str(), create_sql.size()))
+    {
         string err = mysql_error(&mysql);
         throw std::runtime_error(err + " in mysql::reset");
     }
@@ -561,7 +623,8 @@ void dut_tidb::reset(void)
     mysql_free_result(res_sql);
 
     string use_sql = "use " + test_db + "; ";
-    if (mysql_real_query(&mysql, use_sql.c_str(), use_sql.size())) {
+    if (mysql_real_query(&mysql, use_sql.c_str(), use_sql.size()))
+    {
         string err = mysql_error(&mysql);
         throw std::runtime_error(err + " in mysql::reset");
     }
@@ -573,9 +636,10 @@ void dut_tidb::backup(void)
 {
     string mysql_dump = "mysqldump -h 127.0.0.1 -P " + to_string(test_port) + " -u root " + test_db + " > /tmp/mysql_bk.sql";
     int ret = system(mysql_dump.c_str());
-    if (ret != 0) {
+    if (ret != 0)
+    {
         cerr << "backup fail in dut_tidb::backup!!" << endl;
-        throw std::runtime_error("backup fail in dut_tidb::backup"); 
+        throw std::runtime_error("backup fail in dut_tidb::backup");
     }
 }
 
@@ -583,16 +647,16 @@ void dut_tidb::reset_to_backup(void)
 {
     reset();
     string bk_file = "/tmp/mysql_bk.sql";
-    if (access(bk_file.c_str(), F_OK ) == -1) 
+    if (access(bk_file.c_str(), F_OK) == -1)
         return;
-    
+
     mysql_close(&mysql);
-    
+
     string mysql_source = "mysql -h 127.0.0.1 -P " + to_string(test_port) + " -u root -D " + test_db + " < /tmp/mysql_bk.sql";
-    if (system(mysql_source.c_str()) == -1) 
+    if (system(mysql_source.c_str()) == -1)
         throw std::runtime_error(string("system() error, return -1") + " in dut_tidb::reset_to_backup!");
 
-    if (!mysql_real_connect(&mysql, "127.0.0.1", "root", NULL, test_db.c_str(), test_port, NULL, 0)) 
+    if (!mysql_real_connect(&mysql, "127.0.0.1", "root", NULL, test_db.c_str(), test_port, NULL, 0))
         throw std::runtime_error(string(mysql_error(&mysql)) + " in dut_tidb::reset_to_backup!");
 }
 
@@ -608,13 +672,15 @@ int dut_tidb::use_backup_file(string backup_file)
     return system(cp_cmd.c_str());
 }
 
-void dut_tidb::get_content(vector<string>& tables_name, map<string, vector<vector<string>>>& content)
+void dut_tidb::get_content(vector<string> &tables_name, map<string, vector<vector<string>>> &content)
 {
-    for (auto& table:tables_name) {
+    for (auto &table : tables_name)
+    {
         vector<vector<string>> table_content;
         auto query = "SELECT * FROM " + table + " ORDER BY 1;";
 
-        if (mysql_real_query(&mysql, query.c_str(), query.size())) {
+        if (mysql_real_query(&mysql, query.c_str(), query.size()))
+        {
             string err = mysql_error(&mysql);
             cerr << "Cannot get content of " + table + " in mysql::get_content" << endl;
             cerr << "Error: " + err + " in mysql::get_content" << endl;
@@ -623,11 +689,14 @@ void dut_tidb::get_content(vector<string>& tables_name, map<string, vector<vecto
         }
 
         auto result = mysql_store_result(&mysql);
-        if (result) {
+        if (result)
+        {
             auto column_num = mysql_num_fields(result);
-            while (auto row = mysql_fetch_row(result)) {
+            while (auto row = mysql_fetch_row(result))
+            {
                 vector<string> row_output;
-                for (int i = 0; i < column_num; i++) {
+                for (int i = 0; i < column_num; i++)
+                {
                     string str;
                     if (row[i] == NULL)
                         str = "NULL";
@@ -644,15 +713,18 @@ void dut_tidb::get_content(vector<string>& tables_name, map<string, vector<vecto
     }
 }
 
-string dut_tidb::commit_stmt() {
+string dut_tidb::commit_stmt()
+{
     return "COMMIT";
 }
 
-string dut_tidb::abort_stmt() {
+string dut_tidb::abort_stmt()
+{
     return "ROLLBACK";
 }
 
-string dut_tidb::begin_stmt() {
+string dut_tidb::begin_stmt()
+{
     return "BEGIN OPTIMISTIC";
 }
 
@@ -670,7 +742,7 @@ pid_t dut_tidb::fork_db_server()
     //     server_argv[i++] = (char *)"playground";
     //     server_argv[i++] = NULL;
     //     execv(server_argv[0], server_argv);
-    //     cerr << "fork tidb server fail in dut_tidb::fork_db_server" << endl; 
+    //     cerr << "fork tidb server fail in dut_tidb::fork_db_server" << endl;
     // }
     // sleep(30);
     // cout << "server pid: " << child << endl;
