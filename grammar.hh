@@ -141,7 +141,7 @@ struct select_list : prod
 {
     std::vector<shared_ptr<value_expr>> value_exprs;
     std::vector<shared_ptr<named_relation>> *prefer_refs;
-    relation derived_table;
+    relation_t derived_table;
     int columns = 0;
     select_list(prod *p,
                 std::vector<shared_ptr<named_relation>> *refs = 0,

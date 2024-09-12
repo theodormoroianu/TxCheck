@@ -47,13 +47,13 @@ struct column
     }
 };
 
-struct relation
+struct relation_t
 {
     vector<column> cols;
     virtual vector<column> &columns() { return cols; }
 };
 
-struct named_relation : relation
+struct named_relation : relation_t
 {
     string name;
     virtual string ident() { return name; }
@@ -63,9 +63,9 @@ struct named_relation : relation
 
 struct aliased_relation : named_relation
 {
-    relation *rel;
+    relation_t *rel;
     virtual ~aliased_relation() {}
-    aliased_relation(string n, relation *r) : named_relation(n), rel(r) {}
+    aliased_relation(string n, relation_t *r) : named_relation(n), rel(r) {}
     virtual vector<column> &columns() { return rel->columns(); }
 };
 
