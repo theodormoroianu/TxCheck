@@ -71,7 +71,7 @@ int d100()
         return file_random_machine::using_file->get_random_num(1, 100, 2);
 }
 
-// 1 - x
+// random in range 1 - x
 int dx(int x)
 {
     if (file_random_machine::using_file == NULL)

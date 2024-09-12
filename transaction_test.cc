@@ -4,6 +4,11 @@
 #define TXN_NUM (MAX_CONCURRENT_TXN_NUM * 2)
 #define TXN_STMT_NUM 4
 
+/**
+ * Populates the `tid_queue` with transaction IDs, which is the order
+ * in which transaction statements should be executed.
+ * i.e. for each `x`, a new statement from transaction `x` is executed.
+ */
 void transaction_test::assign_txn_id()
 {
     set<int> concurrent_tid;
@@ -42,6 +47,9 @@ void transaction_test::assign_txn_id()
     return;
 }
 
+/**
+ * Set which transactions abort and which commit.
+ */
 void transaction_test::assign_txn_status()
 {
     for (int i = 0; i < commit_num; i++)
@@ -58,11 +66,16 @@ void transaction_test::assign_txn_status()
     return;
 }
 
+/**
+ * Generates the statements for each transaction, with the init / abort / commit statements.
+ * It also populates the `stmt_queue` and `stmt_use` vectors.
+ */
 void transaction_test::gen_txn_stmts()
 {
     cerr << "generating statements ... ";
     int stmt_pos_of_trans[trans_num];
 
+    // Schema of the current database state.
     db_schema = get_schema(test_dbms_info);
     for (int tid = 0; tid < trans_num; tid++)
     {
@@ -363,6 +376,13 @@ int transaction_test::trans_test_unit(int stmt_pos, stmt_output &output, bool de
     return 0;
 }
 
+/**
+ * If a transaction has committed / aborted, it makes sense to try again
+ * to execute blocked statements, which might now be unblocked.
+ * This function does that.
+ *
+ * @param cur_stmt_num Nr nr of the statement which might have unblocked stuff. So only look at < cur_stmt_num.
+ */
 void transaction_test::retry_block_stmt(int cur_stmt_num, int *status_queue, bool debug_mode)
 {
     if (debug_mode)
@@ -446,6 +466,7 @@ void transaction_test::retry_block_stmt(int cur_stmt_num, int *status_queue, boo
                             (stmt.size() >= abort_str.size());
             if (is_commit || is_abort)
             {
+                // Recursively try to unblock other statements.
                 retry_block_stmt(stmt_pos, status_queue, debug_mode);
             }
         }
@@ -468,6 +489,10 @@ void transaction_test::retry_block_stmt(int cur_stmt_num, int *status_queue, boo
         cerr << YELLOW << "retrying process end..." << RESET << endl;
 }
 
+/**
+ * Runs the transactions, and records the real execution order of the statements
+ * in `real_tid_queue`, `real_stmt_queue`, `real_output_queue`, and `real_stmt_usage`.
+ */
 void transaction_test::trans_test(bool debug_mode)
 {
     dut_reset_to_backup(test_dbms_info);
@@ -546,6 +571,8 @@ void transaction_test::trans_test(bool debug_mode)
     if (executed < stmt_num)
         cerr << RED << "some stmt is still not executed, finish them" << RESET << endl;
 
+    // Try to execute the blocked statements.
+    // Stop if we executed all statements, or if we didn't execute any new statements.
     while (executed < stmt_num)
     {
         retry_block_stmt(stmt_num, status_queue, debug_mode);
@@ -629,6 +656,10 @@ void transaction_test::trans_test(bool debug_mode)
     dut_get_content(test_dbms_info, trans_db_content);
 }
 
+/**
+ * Saves the test case to disk in a `???_stmts.sql` files,
+ * a `???_tid.txt` file, and a `???_stmt_use.txt` file.
+ */
 void transaction_test::save_test_case(string dir_name,
                                       string prefix,
                                       vector<shared_ptr<prod>> &tar_stmt_queue,
@@ -748,6 +779,11 @@ bool transaction_test::try_to_kill_server()
     return flag;
 }
 
+/**
+ * If the server is no longer accessible, we:
+ * 1. Kill the server process.
+ * 2. Spawn a new server process.
+ */
 bool transaction_test::fork_if_server_closed(dbms_info &d_info)
 {
     bool server_restart = false;
@@ -1143,6 +1179,10 @@ void infer_instrument_after_blocking(vector<shared_ptr<prod>> &whole_before_stmt
     after_stmt_usage = final_after_stmt_usage;
 }
 
+/**
+ * Runs a test on the transaction.
+ * The trasactions, transaction statements, and the database content are set before calling this function.
+ */
 bool transaction_test::multi_stmt_round_test()
 {
     block_scheduling(); // it will make many stmts fails, we replace these failed stmts with space holder
@@ -1331,6 +1371,7 @@ bool transaction_test::multi_stmt_round_test()
 }
 
 // change stmt_queue, stmt_use, and tid_queue but not change trans[tid] related data
+// This is because of blocking behaviour.
 void transaction_test::block_scheduling()
 {
     cerr << "block scheduling ... ";
@@ -1350,6 +1391,11 @@ void transaction_test::block_scheduling()
     cerr << "done" << endl;
 }
 
+/**
+ * Run a series of tests on DBMS.
+ * This is the top-level function for fuzzing, which is called in a loop.
+ * It assumes that the DBMS has been set up and is running.
+ */
 int transaction_test::test()
 {
     cerr << "\n\n";

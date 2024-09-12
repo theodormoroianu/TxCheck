@@ -28,6 +28,10 @@ enum stmt_basic_type
     VERSION_SET_READ
 };
 
+/**
+ * Stores the information of a statement: its type (SELECT / UPDATE / ... / BWR / VSR / AWR),
+ * the table it operates on, and whether it is instrumented.
+ */
 struct stmt_usage
 {
     stmt_basic_type stmt_type;

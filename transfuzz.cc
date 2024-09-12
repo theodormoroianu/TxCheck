@@ -160,6 +160,10 @@ int fork_for_generating_database(dbms_info &d_info)
     return 0;
 }
 
+/**
+ * Fork a child process to run the transaction test.
+ * The child runs the test, and the parent waits for a specified timeout.
+ */
 int fork_for_transaction_test(dbms_info &d_info)
 {
     static itimerval itimer;

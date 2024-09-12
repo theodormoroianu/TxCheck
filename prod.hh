@@ -13,6 +13,10 @@
 #define MAX_TRY_TIME 1
 #define TEST_TIME_FOR_EACH_DB 10
 #define TRANSACTION_TIMEOUT 360000 // 100 hour == no timeout
+
+/**
+ * Status of a txn, can be commit, abort or undefined.
+ */
 enum txn_status
 {
     NOT_DEFINED,

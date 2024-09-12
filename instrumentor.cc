@@ -56,8 +56,9 @@ instrumentor::instrumentor(vector<shared_ptr<prod>> &stmt_queue,
         if (update_statement)
         {                          // is a update statement
             used_scope.new_stmt(); // for before_write_select_stmt
-            auto before_write_select_stmt = make_shared<query_spec>((struct prod *)0, &used_scope,
-                                                                    update_statement->victim, update_statement->search);
+            auto before_write_select_stmt = make_shared<query_spec>(
+                (struct prod *)0, &used_scope,
+                update_statement->victim, update_statement->search);
 
             used_scope.new_stmt(); // for after_write_select_stmt
             // get wkey idex

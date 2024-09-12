@@ -32,9 +32,14 @@ enum dependency_type
     INNER_DEPEND
 }; // for predicate
 
-typedef vector<string> row_output;      // a row consists of several field(string)
-typedef vector<row_output> stmt_output; // one output consits of several rows
+// a row consists of several field(string) -> vector <string>
+typedef vector<string> row_output;
+// one output consits of several rows -> vector <vector <string>>
+typedef vector<row_output> stmt_output;
 
+/**
+ * Seems to be an entry to the history vector??
+ */
 struct operate_unit
 {
     stmt_usage stmt_u;
@@ -43,17 +48,29 @@ struct operate_unit
     int stmt_idx;
     int row_id;
     size_t hash;
-    operate_unit(stmt_usage use, int op_id, int tid, int stmt_idx, int row_id, size_t hash) : stmt_u(use), write_op_id(op_id),
-                                                                                              tid(tid), stmt_idx(stmt_idx),
-                                                                                              row_id(row_id), hash(hash) {}
+    operate_unit(
+        stmt_usage use,
+        int op_id,
+        int tid,
+        int stmt_idx,
+        int row_id,
+        size_t hash) : stmt_u(use), write_op_id(op_id),
+                       tid(tid), stmt_idx(stmt_idx),
+                       row_id(row_id), hash(hash) {}
 };
 
+/**
+ * Stores the updates of a specific row of the database (identified with the rowid).
+ */
 struct row_change_history
 {
     int row_id;
     vector<operate_unit> row_op_list;
 };
 
+/**
+ * Stores the history of the updates done to rows of the database.
+ */
 struct history
 {
     vector<row_change_history> change_history;
@@ -150,24 +167,36 @@ struct dependency_analyzer
     static bool reduce_graph_outdegree(int **direct_graph, int length);
 
     history h;
+    // Number of transactions (including the init transaction).
     int tid_num;
     int stmt_num;
     int *tid_begin_idx;        // idx of first non-start transaction
     int *tid_strict_begin_idx; // idx of start transaction
     int *tid_end_idx;
 
+    // Index of the PK in the output of a statement.
     int primary_key_index;
+    // Index if the version key in the output of a statement.
     int version_key_index;
 
+    // Status of the transactions (aborted / committed / undefined).
     vector<txn_status> f_txn_status;
+    // The id of the transactions in the order of the appearence of statements.
     vector<int> f_txn_id_queue;
+    // Number of statements in each transaction.
     vector<int> f_txn_size;
+    // Type of the executed statements.
     vector<stmt_usage> f_stmt_usage;
+    // Output of the statements.
     vector<stmt_output> f_stmt_output;
+    // Hash of the output of statements.
     map<int, row_output> hash_to_output;
+
+    // dependency_graph[i][j] = set of dependencies of txn i over j
     set<dependency_type> **dependency_graph;
     void check_txn_graph_cycle(set<int> &cycle_nodes, vector<int> &sorted_nodes);
 
+    // Dependencies between statements.
     map<pair<stmt_id, stmt_id>, set<dependency_type>> stmt_dependency_graph;
     void build_stmt_depend_from_stmt_idx(int stmt_idx1, int stmt_idx2, dependency_type dt);
     vector<stmt_id> longest_stmt_path(map<pair<stmt_id, stmt_id>, int> &stmt_dist_graph);

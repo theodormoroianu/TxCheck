@@ -37,6 +37,7 @@ struct transaction
     }
 
     int stmt_num;
+    // Speficies if this specific transaction aborts or commits.
     txn_status status;
 };
 
@@ -58,9 +59,16 @@ public:
 
     shared_ptr<schema> db_schema;
 
+    // TID of the transactions in the order in which we execute them.
+    // e.g. { 1, 2, 0, 1 } -> stmt from 1, stmt from 2, stmt from 0, stmt from 1
     vector<int> tid_queue;
+    // The statements that we execute in the order in which we execute them.
+    // Same order as `tid_queue`.
     vector<shared_ptr<prod>> stmt_queue;
+    // The usage of the statements in the order in which we execute them.
+    // same as `tid_queue` and `stmt_queue`.
     vector<stmt_usage> stmt_use;
+    // Initial database content, indexed by table name.
     map<string, vector<vector<string>>> init_db_content;
 
     vector<int> real_tid_queue;

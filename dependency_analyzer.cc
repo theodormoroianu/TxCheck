@@ -514,6 +514,10 @@ void dependency_analyzer::build_start_dependency()
     delete[] tid_has_used_begin;
 }
 
+/**
+ * Takes BWR, AWR and VSR and adds edges to/from the instrumented statement as a dependency
+ * in the `stmt_dependency_graph` map.
+ */
 void dependency_analyzer::build_stmt_instrument_dependency()
 {
     for (int i = 0; i < stmt_num; i++)
@@ -760,6 +764,7 @@ dependency_analyzer::dependency_analyzer(vector<stmt_output> &init_output,
     for (int i = 0; i < tid_num; i++)
         dependency_graph[i] = new set<dependency_type>[tid_num];
 
+    // Add versions added the init transaction.
     for (auto &each_output : init_output)
     {
         if (each_output.empty())
@@ -775,6 +780,7 @@ dependency_analyzer::dependency_analyzer(vector<stmt_output> &init_output,
         }
     }
 
+    // Add versions added by other transactions.
     for (int i = 0; i < stmt_num; i++)
     {
         auto &each_output = f_stmt_output[i];
