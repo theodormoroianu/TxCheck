@@ -1,7 +1,7 @@
 #include "transaction_test.hh"
 
-#define MAX_CONCURRENT_TXN_NUM 3
-#define TXN_NUM (MAX_CONCURRENT_TXN_NUM * 2)
+#define MAX_CONCURRENT_TXN_NUM 2
+#define TXN_NUM (MAX_CONCURRENT_TXN_NUM * 1)
 #define TXN_STMT_NUM 4
 
 /**
@@ -77,13 +77,17 @@ void transaction_test::gen_txn_stmts()
 
     // Schema of the current database state.
     db_schema = get_schema(test_dbms_info);
+
+    cerr << "There are " << trans_num << " transactions." << endl;
     for (int tid = 0; tid < trans_num; tid++)
     {
         trans_arr[tid].dut = dut_setup(test_dbms_info);
         stmt_pos_of_trans[tid] = 0;
 
+        cerr << "Generating statements for one transaction ... ";
         // save 2 stmts for begin and commit/abort
         gen_stmts_for_one_txn(db_schema, trans_arr[tid].stmt_num - 2, trans_arr[tid].stmts, test_dbms_info);
+        cerr << "done" << endl;
         // insert begin and end stmts
         trans_arr[tid].stmts.insert(trans_arr[tid].stmts.begin(),
                                     make_shared<txn_string_stmt>((prod *)0, trans_arr[tid].dut->begin_stmt()));

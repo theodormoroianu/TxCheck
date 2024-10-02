@@ -9,8 +9,10 @@
 #include "prod.hh"
 #include "expr.hh"
 #include "grammar.hh"
+#include "relmodel.hh"
 
 #include <vector>
+#include <map>
 
 using namespace std;
 
@@ -25,7 +27,10 @@ enum stmt_basic_type
     DELETE_WRITE,
     BEFORE_WRITE_READ,
     AFTER_WRITE_READ,
-    VERSION_SET_READ
+    VERSION_SET_READ,
+    BEFORE_PREDICATE_MATCH,
+    AFTER_PREDICATE_MATCH,
+    PREDICATE_MATCH
 };
 
 /**
@@ -83,10 +88,42 @@ struct instrumentor
                  vector<int> &tid_queue,
                  shared_ptr<schema> db_schema);
 
-    vector<shared_ptr<prod>> final_stmt_queue;
+    // Used for generating statements.
+    scope used_scope;
+    shared_ptr<schema> db_schema;
+
+    // The final list of statements to be executed, after instrumenting
+    vector<shared_ptr<prod>>
+        final_stmt_queue;
+
+    // The final list of transaction IDs, after instrumenting. It represents the tid of each statement in final_stmt_queue.
     vector<int> final_tid_queue;
 
+    // The final list of statement usages, after instrumenting. It represents the type (SELECT / UPDATE / ... / BWR / VSR / AWR) of each statement in final_stmt_queue.
     vector<stmt_usage> final_stmt_usage;
+
+    // Stores the predicates extracted from the statements.
+    // The key is the statement index, and the value is the predicate.
+    map<int, shared_ptr<query_spec>> predicates;
+
+    // Gives additional information on the BEFORE and AFTER PREDICATE MATCH statements.
+    // It maps predicate reads, BEFORE_PREDICATE_MATCH, and AFTER_PREDICATE_MATCH to the same predicate ID from the `predicates` map.
+    std::map<int, int> stmt_id_to_predicate_id;
+
+    // Populates the `predicates` map with the predicates extracted from the statements.
+    void ExtractPredicates(vector<shared_ptr<prod>> &stmt_queue);
+
+    // Adds the instrumentation from an update statement.
+    void HandleUpdateStmt(shared_ptr<update_stmt> update_statement, int tid, int stmt_idx);
+
+    // Adds the instrumentation from a delete statement.
+    void HandleDeleteStmt(shared_ptr<delete_stmt> delete_statement, int tid, int stmt_idx);
+
+    // Adds the instrumentation from an insert statement.
+    void HandleInsertStmt(shared_ptr<insert_stmt> stmt, int tid, int stmt_idx);
+
+    // Adds the instrumentation from a select statement.
+    void HandleSelectStmt(shared_ptr<query_spec> stmt, int tid, int stmt_idx);
 };
 
 #endif

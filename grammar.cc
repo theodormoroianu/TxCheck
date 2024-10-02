@@ -21,6 +21,9 @@ set<string> update_used_column_ref;
 int write_op_id = 0;       // start from 10000
 static int row_id = 10000; // start from 10000
 
+/**
+ * Moves the table `victim` from `target_tables` to `excluded_tables` if present, and from `target_t_with_c_of_type` to `excluded_t_with_c_of_type` if present.
+ */
 static void exclude_tables(
     table *victim,
     vector<named_relation *> &target_tables,
@@ -50,6 +53,9 @@ static void exclude_tables(
     }
 }
 
+/**
+ * Moves the tables from `excluded_tables` to `target_tables`, and from `excluded_t_with_c_of_type` to `target_t_with_c_of_type`.
+ */
 static void recover_tables(
     vector<named_relation *> &target_tables,
     multimap<sqltype *, table *> &target_t_with_c_of_type,
@@ -1952,6 +1958,11 @@ shared_ptr<prod> basic_dml_statement_factory(struct scope *s)
     }
 }
 
+/**
+ * Generates an SQL statement fitting in a given scope.
+ * @param s the scope to generate the statement in
+ * @param choice the choice of the statement to generate, can be `delete_stmt`, `query_spec`, `insert_stmt`, `update_stmt`
+ */
 shared_ptr<prod> txn_statement_factory(struct scope *s, int choice)
 {
     static int recur_time = 0;
@@ -1963,9 +1974,9 @@ shared_ptr<prod> txn_statement_factory(struct scope *s, int choice)
         // should not have ddl statement, which will auto commit in tidb;
         if (choice <= 2)
             return make_shared<delete_stmt>((struct prod *)0, s);
-        else if (choice == 3)
-            return make_shared<common_table_expression>((struct prod *)0, s, true);
-        else if (choice == 4)
+        // else if (choice == 3)
+        //     return make_shared<common_table_expression>((struct prod *)0, s, true);
+        else if (choice <= 4)
             return make_shared<query_spec>((struct prod *)0, s, false, (vector<sqltype *> *)NULL, true);
         else if (choice <= 7)
             return make_shared<insert_stmt>((struct prod *)0, s);
