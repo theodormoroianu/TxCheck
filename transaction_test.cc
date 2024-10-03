@@ -77,13 +77,17 @@ void transaction_test::gen_txn_stmts()
 
     // Schema of the current database state.
     db_schema = get_schema(test_dbms_info);
+
+    cerr << "There are " << trans_num << " transactions." << endl;
     for (int tid = 0; tid < trans_num; tid++)
     {
         trans_arr[tid].dut = dut_setup(test_dbms_info);
         stmt_pos_of_trans[tid] = 0;
 
+        cerr << "Generating statements for one transaction ... ";
         // save 2 stmts for begin and commit/abort
         gen_stmts_for_one_txn(db_schema, trans_arr[tid].stmt_num - 2, trans_arr[tid].stmts, test_dbms_info);
+        cerr << "done" << endl;
         // insert begin and end stmts
         trans_arr[tid].stmts.insert(trans_arr[tid].stmts.begin(),
                                     make_shared<txn_string_stmt>((prod *)0, trans_arr[tid].dut->begin_stmt()));
@@ -1137,6 +1141,17 @@ void infer_instrument_after_blocking(vector<shared_ptr<prod>> &whole_before_stmt
             final_after_stmt_queue.push_back(after_stmt_queue[i]);
             final_after_tid_queue.push_back(tid);
             final_after_stmt_usage.push_back(stmt_use);
+
+            // START
+            // INIT_TYPE seems to be everything except instrumentation code,
+            // but this function is being run before instrumentation code is added.
+            // So this seems to be unreachable. Maybe I am missing something.
+            cerr << RED << "This seems to be unreachable" << endl;
+            cerr << "Not sure what to do here" << RESET << endl;
+            cerr << "stmt_use: " << stmt_use << endl;
+            throw runtime_error("Unexpected!");
+            // END
+
             continue;
         }
 
@@ -1148,6 +1163,18 @@ void infer_instrument_after_blocking(vector<shared_ptr<prod>> &whole_before_stmt
         {
             if (whole_before_tid_queue[j] != tid)
                 continue;
+
+            // START
+            // The instructions should never be instrumented, as this
+            // is ran before instrumentation code is added.
+            if (whole_before_stmt_usage[j].is_instrumented == true)
+            {
+                cerr << RED << "This seems to be unreachable" << endl;
+                cerr << "Not sure what to do here" << RESET << endl;
+                throw runtime_error("Unexpected!");
+            }
+            // END
+
             if (whole_before_stmt_usage[j].is_instrumented == true)
                 continue;
             basic_stmt_pos++;
@@ -1179,10 +1206,6 @@ void infer_instrument_after_blocking(vector<shared_ptr<prod>> &whole_before_stmt
     after_stmt_usage = final_after_stmt_usage;
 }
 
-/**
- * Runs a test on the transaction.
- * The trasactions, transaction statements, and the database content are set before calling this function.
- */
 bool transaction_test::multi_stmt_round_test()
 {
     block_scheduling(); // it will make many stmts fails, we replace these failed stmts with space holder

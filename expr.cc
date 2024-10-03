@@ -195,6 +195,9 @@ column_reference::column_reference(prod *p, sqltype *column_type,
     table_ref = table_name;
 }
 
+/**
+ * Creates a random boolean expression, given its parent production.
+ */
 shared_ptr<bool_expr> bool_expr::factory(prod *p)
 {
     try

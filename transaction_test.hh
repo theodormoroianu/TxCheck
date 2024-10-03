@@ -87,17 +87,49 @@ public:
     vector<shared_ptr<prod>> original_stmt_queue;
     vector<stmt_usage> original_stmt_use;
 
+    /**
+     * Populates the `tid_queue` with transaction IDs, which is the order
+     * in which transaction statements should be executed.
+     * i.e. for each `x`, a new statement from transaction `x` is executed.
+     */
     void assign_txn_id();
+
+    // Set which transactions abort and which commit.
     void assign_txn_status();
+
+    /**
+     * Generates the statements for each transaction, with the init / abort / commit statements.
+     * It also populates the `stmt_queue` and `stmt_use` vectors.
+     */
     void gen_txn_stmts();
+
+    // instrument, and also align the trans_arr[tid] related data
     void instrument_txn_stmts();
+
+    // Deletes all instrumentation statements, while preserving the orignal
+    // statements, transaction IDs, and statement usage.
     void clean_instrument();
+
+    // change stmt_queue, stmt_use, and tid_queue but not change trans[tid] related data
+    // This is because of blocking behaviour.
     void block_scheduling();
 
+    // Change the status of a transaction.
+    // Returns true if the status was updated, false if not needed.
     bool change_txn_status(int tid, txn_status final_status);
-    bool analyze_txn_dependency(shared_ptr<dependency_analyzer> &da); // input da is empty; output the analyzed da
+
+    // input da is empty; output the analyzed da
+    bool analyze_txn_dependency(shared_ptr<dependency_analyzer> &da);
     void clear_execution_status();
-    bool multi_stmt_round_test(); // true: find bugs; false: no bug
+
+    /**
+     * Runs a test on the transaction.
+     * The trasactions, transaction statements, and the database content are set before calling this function.
+     *
+     * @return true if the test fails, false if the test passes.
+     */
+    bool multi_stmt_round_test();
+
     bool refine_stmt_queue(vector<stmt_id> &stmt_path, shared_ptr<dependency_analyzer> &da);
     void normal_stmt_test(vector<stmt_id> &stmt_path);
     bool check_normal_stmt_result(vector<stmt_id> &stmt_path, bool debug = false);

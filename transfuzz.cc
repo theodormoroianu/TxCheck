@@ -249,6 +249,7 @@ int random_test(dbms_info &d_info)
 {
     random_device rd;
     auto rand_seed = rd();
+    rand_seed = 3201650297;
     cerr << "\n\n";
     cerr << "random seed for db: " << rand_seed << endl;
     smith::rng.seed(rand_seed);
@@ -284,6 +285,7 @@ int random_test(dbms_info &d_info)
     {
         // each round, generate random seed again, otherwise it will perform the same tests
         rand_seed = rd();
+        rand_seed = 3612474293;
         cerr << "\n\n";
         cerr << "random seed for tests: " << rand_seed << endl;
         smith::rng.seed(rand_seed);

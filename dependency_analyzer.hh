@@ -133,7 +133,11 @@ struct dependency_analyzer
     void build_stmt_inner_dependency();
     void build_start_dependency();
     void build_stmt_instrument_dependency();
+
+    // Returns the set of instrumentation statements created for the statement at the given index.
+    // Relies on the `stmt_dependency_graph` map to find the dependencies.
     set<int> get_instrumented_stmt_set(int queue_idx);
+
     void build_stmt_start_dependency(int prev_tid, int later_tid, dependency_type dt);
 
     void print_dependency_graph();

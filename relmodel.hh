@@ -53,6 +53,9 @@ struct relation_t
     virtual vector<column> &columns() { return cols; }
 };
 
+/**
+ * A table, a view or a subquery.
+ */
 struct named_relation : relation_t
 {
     string name;
@@ -88,6 +91,9 @@ struct table : named_relation
     virtual ~table() {};
 };
 
+/**
+ * State of the AST when generating a nested node.
+ */
 struct scope
 {
     struct scope *parent;
