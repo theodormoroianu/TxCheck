@@ -77,13 +77,17 @@ void transaction_test::gen_txn_stmts()
 
     // Schema of the current database state.
     db_schema = get_schema(test_dbms_info);
+
+    cerr << "There are " << trans_num << " transactions." << endl;
     for (int tid = 0; tid < trans_num; tid++)
     {
         trans_arr[tid].dut = dut_setup(test_dbms_info);
         stmt_pos_of_trans[tid] = 0;
 
+        cerr << "Generating statements for one transaction ... ";
         // save 2 stmts for begin and commit/abort
         gen_stmts_for_one_txn(db_schema, trans_arr[tid].stmt_num - 2, trans_arr[tid].stmts, test_dbms_info);
+        cerr << "done" << endl;
         // insert begin and end stmts
         trans_arr[tid].stmts.insert(trans_arr[tid].stmts.begin(),
                                     make_shared<txn_string_stmt>((prod *)0, trans_arr[tid].dut->begin_stmt()));
@@ -256,6 +260,12 @@ bool transaction_test::analyze_txn_dependency(shared_ptr<dependency_analyzer> &d
     //     return true;
     // }
     cerr << "done" << endl;
+
+    if (da->check_any_transaction_cycle() == true)
+    {
+        cerr << "check_any_cycle violate!!" << endl;
+        return true;
+    }
 
     return false;
 }
@@ -1179,10 +1189,6 @@ void infer_instrument_after_blocking(vector<shared_ptr<prod>> &whole_before_stmt
     after_stmt_usage = final_after_stmt_usage;
 }
 
-/**
- * Runs a test on the transaction.
- * The trasactions, transaction statements, and the database content are set before calling this function.
- */
 bool transaction_test::multi_stmt_round_test()
 {
     block_scheduling(); // it will make many stmts fails, we replace these failed stmts with space holder
@@ -1209,6 +1215,9 @@ bool transaction_test::multi_stmt_round_test()
     shared_ptr<dependency_analyzer> init_da;
     if (analyze_txn_dependency(init_da))
         throw runtime_error("BUG: found in analyze_txn_dependency()");
+
+    // We only care about the dependencies.
+    return false;
 
     // record init status
     auto init_stmt_queue = stmt_queue;
@@ -1370,8 +1379,6 @@ bool transaction_test::multi_stmt_round_test()
     return false;
 }
 
-// change stmt_queue, stmt_use, and tid_queue but not change trans[tid] related data
-// This is because of blocking behaviour.
 void transaction_test::block_scheduling()
 {
     cerr << "block scheduling ... ";

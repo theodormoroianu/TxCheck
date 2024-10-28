@@ -21,14 +21,21 @@ using namespace std;
 // STRICT_START_DEPEND: the begin is count by begin statement
 enum dependency_type
 {
+    // a writes a value, b reads it
     WRITE_READ,
+    // a writes a value, b overwrites it
     WRITE_WRITE,
+    // a reads a value, b overwrites it
     READ_WRITE,
+    // a commits before b starts
     START_DEPEND,
+    // a commits before b runs a statement (different than start transaction)
     STRICT_START_DEPEND,
+    // ordering imposed by the instrumentation
     INSTRUMENT_DEPEND,
     VERSION_SET_DEPEND,
     OVERWRITE_DEPEND,
+    // ordering within a transaction
     INNER_DEPEND
 }; // for predicate
 
@@ -43,6 +50,7 @@ typedef vector<row_output> stmt_output;
 struct operate_unit
 {
     stmt_usage stmt_u;
+    // Version of the row.
     int write_op_id;
     int tid;
     int stmt_idx;
@@ -122,18 +130,75 @@ struct dependency_analyzer
     ~dependency_analyzer();
 
     size_t hash_output(row_output &row);
-    void build_WR_dependency(vector<operate_unit> &op_list, int op_idx);
-    void build_RW_dependency(vector<operate_unit> &op_list, int op_idx);
-    void build_WW_dependency(vector<operate_unit> &op_list, int op_idx);
+
+    // Creates
+    void build_predicate_dependency(vector<operate_unit> &op_list, int predicate_idx);
+
+    /**
+     * Finds who installed a specific value and adds the WR dependency.
+     *
+     * @param op_list The list of values of the row.
+     * @param op_idx The index of the read operation in the row list.
+     */
+    void build_directly_read_dependency(vector<operate_unit> &op_list, int op_idx);
+
+    /**
+     * Finds who read an overwriten value and adds the RW dependency.
+     *
+     * @param op_list The list of values of the row.
+     * @param op_idx The index of the overwite operation in the row list.
+     */
+    void build_directly_item_anti_dependency(vector<operate_unit> &op_list, int op_idx);
+
+    /**
+     * Finds who installed a specific value and adds the WW dependency.
+     *
+     * @param op_list The list of values of the row.
+     * @param op_idx The index of the write operation in the row list.
+     */
+    void build_directly_write_dependency(vector<operate_unit> &op_list, int op_idx);
 
     // for predicate
     void build_VS_dependency();
     void build_OW_dependency();
 
+    /**
+     * Returns true if the statement `stmt_idx` is overwriten by
+     * the statement `overwrite_stmt`.
+     *
+     * @param stmt_idx The index of the statement to check. Must contain a PREDICATE_MATCH.
+     * @param overwrite_stmt The index of the statement that overwrites the other. Must be an AWR.
+     * @param bpm The index of the statement that contains the before predicate match of `stmt_idx` for `overwrite_stmt`.
+     * @param apm The index of the statement that contains the after predicate match of `stmt_idx` for `overwrite_stmt`.
+     */
+    bool check_if_stmt_is_overwriten(int predicate_match, int overwrite_awr_stmt, int bpm_stmt, int apm_stmt);
+
+    /**
+     * Returns true if the version `v1` is higher than the version `v2`.
+     *
+     * @param row_id The id of the row.
+     * @param v1 The first version to compare.
+     * @param v2 The second version to compare.
+     */
+    bool check_which_version_is_higher(int row_id, int v1, int v2);
+
+    /**
+     * Reads the output of a statement into the primary key and version key.
+     *
+     * @param stmt_idx The index of the statement to read.
+     * @param pk_version_pair The set to store the primary key and version key.
+     * @param primary_key_set The set to store the primary keys.
+     */
+    void read_stmt_output_into_pk_and_version(int stmt_idx, set<pair<int, int>> &pk_version_pair, set<int> &primary_key_set);
+
     void build_stmt_inner_dependency();
     void build_start_dependency();
     void build_stmt_instrument_dependency();
+
+    // Returns the set of instrumentation statements created for the statement at the given index.
+    // Relies on the `stmt_dependency_graph` map to find the dependencies.
     set<int> get_instrumented_stmt_set(int queue_idx);
+
     void build_stmt_start_dependency(int prev_tid, int later_tid, dependency_type dt);
 
     void print_dependency_graph();
@@ -161,6 +226,16 @@ struct dependency_analyzer
     // G-SIb: Missed Effects. A history H exhibits phenomenon G-SIb if SSG(H) contains
     // a directed cycle with exactly one anti-dependency edge.
     bool check_GSIb();
+
+    /**
+     * Checks if the DSG contains a cycle.
+     * It first converts the statement dependency graph to a DSG (it
+     * creates a graph on transactions instead of statements), and
+     * then checks if there is a cycle in the DSG.
+     *
+     * @return True if there is a cycle, false otherwise.
+     */
+    bool check_any_transaction_cycle();
 
     bool check_cycle(set<dependency_type> &edge_types);
     static bool reduce_graph_indegree(int **direct_graph, int length);

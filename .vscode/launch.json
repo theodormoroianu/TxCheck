@@ -24,6 +24,40 @@
                     "ignoreFailures": true
                 }
             ]
-        }
+        },
+        {
+            
+            "name": "transfuzz",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/transfuzz",
+            "args": [
+                "--mysql-db=testdb",
+                "--mysql-port=3306",
+                "--output-or-affect-num=1"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {   
+                    "description": "The new process is debugged after a fork. The parent process runs unimpeded.",
+                    "text": "-gdb-set detach-on-fork off",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ]
+        },
     ]
 }

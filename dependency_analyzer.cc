@@ -1,4 +1,22 @@
 #include <dependency_analyzer.hh>
+#include <ranges>
+#include <functional>
+#include <print>
+
+using std::println;
+
+#define RESET "\033[0m"
+#define BLACK "\033[30m"            /* Black */
+#define RED "\033[31m"              /* Red */
+#define GREEN "\033[32m"            /* Green */
+#define YELLOW "\033[33m"           /* Yellow */
+#define BLUE "\033[34m"             /* Blue */
+#define MAGENTA "\033[35m"          /* Magenta */
+#define CYAN "\033[36m"             /* Cyan */
+#define WHITE "\033[37m"            /* White */
+#define BOLDBLACK "\033[1m\033[30m" /* Bold Black */
+
+using std::function;
 
 void history::insert_to_history(operate_unit &oper_unit)
 {
@@ -89,7 +107,7 @@ size_t dependency_analyzer::hash_output(row_output &row)
 }
 
 // for BEFORE_WRITE_READ, VERSION_SET_READ, SELECT_READ
-void dependency_analyzer::build_WR_dependency(vector<operate_unit> &op_list, int op_idx)
+void dependency_analyzer::build_directly_read_dependency(vector<operate_unit> &op_list, int op_idx)
 {
     auto &target_op = op_list[op_idx];
     bool find_the_write = false;
@@ -141,11 +159,11 @@ void dependency_analyzer::build_WR_dependency(vector<operate_unit> &op_list, int
 }
 
 // for BEFORE_WRITE_READ
-void dependency_analyzer::build_RW_dependency(vector<operate_unit> &op_list, int op_idx)
+void dependency_analyzer::build_directly_item_anti_dependency(vector<operate_unit> &op_list, int op_idx)
 {
     auto &target_op = op_list[op_idx];
     if (target_op.stmt_u != BEFORE_WRITE_READ)
-        throw runtime_error("something wrong, target_op.stmt_u is not BEFORE_WRITE_READ in build_RW_dependency");
+        throw runtime_error("something wrong, target_op.stmt_u is not BEFORE_WRITE_READ in build_directly_item_anti_dependency");
 
     auto list_size = op_list.size();
     for (int i = 0; i < list_size; i++)
@@ -172,11 +190,11 @@ void dependency_analyzer::build_RW_dependency(vector<operate_unit> &op_list, int
 }
 
 // for BEFORE_WRITE_READ
-void dependency_analyzer::build_WW_dependency(vector<operate_unit> &op_list, int op_idx)
+void dependency_analyzer::build_directly_write_dependency(vector<operate_unit> &op_list, int op_idx)
 {
     auto &target_op = op_list[op_idx];
     if (target_op.stmt_u != BEFORE_WRITE_READ)
-        throw runtime_error("something wrong, target_op.stmt_u is not BEFORE_WRITE_READ in build_WW_dependency");
+        throw runtime_error("something wrong, target_op.stmt_u is not BEFORE_WRITE_READ in build_directly_write_dependency");
 
     bool find_the_write = false;
     for (int i = op_idx - 1; i >= 0; i--)
@@ -270,12 +288,17 @@ void dependency_analyzer::build_VS_dependency()
                 { // if it is not empty, the changed version is seen in version read
                     if (i_tid != j_tid)
                         dependency_graph[j_tid][i_tid].insert(VERSION_SET_DEPEND);
-                    build_stmt_depend_from_stmt_idx(after_write_idx, i, VERSION_SET_DEPEND);
+                    // build_stmt_depend_from_stmt_idx(after_write_idx, i, VERSION_SET_DEPEND);
                     // update/insert -> AFTER_WRITE_READ -> VERSION_SET_READ -> target_one
                 }
             }
             else if (j_stmt_u == DELETE_WRITE)
             {
+                // This is kind of wrong, as DELETE should basically create
+                // a hidden version. Probably we need to not accept DELETE statements.
+                // TODO
+                continue;
+                // throw runtime_error("DELETE not supported yet!");
                 auto before_write_idx = j - 1;
                 if (f_stmt_usage[before_write_idx] != BEFORE_WRITE_READ)
                 {
@@ -312,7 +335,7 @@ void dependency_analyzer::build_VS_dependency()
                 { // if it is emtpy, the row is deleted
                     if (i_tid != j_tid)
                         dependency_graph[j_tid][i_tid].insert(VERSION_SET_DEPEND);
-                    build_stmt_depend_from_stmt_idx(j, i, VERSION_SET_DEPEND);
+                    // build_stmt_depend_from_stmt_idx(j, i, VERSION_SET_DEPEND);
                     // BEFORE_WRITE_READ-> delete -> VERSION_SET_READ -> target_one
                 }
             }
@@ -320,9 +343,213 @@ void dependency_analyzer::build_VS_dependency()
     }
 }
 
+void dependency_analyzer::read_stmt_output_into_pk_and_version(int stmt_idx, set<pair<int, int>> &pk_version_pair, set<int> &primary_key_set)
+{
+    assert(stmt_idx >= 0 && stmt_idx < stmt_num);
+
+    auto &stmt_output = f_stmt_output[stmt_idx];
+    for (auto &row : stmt_output)
+    {
+        auto row_id = stoi(row[primary_key_index]);
+        auto version_id = stoi(row[version_key_index]);
+
+        assert(pk_version_pair.count({row_id, version_id}) == 0);
+        pk_version_pair.insert({row_id, version_id});
+
+        assert(primary_key_set.count(row_id) == 0);
+        primary_key_set.insert(row_id);
+    }
+}
+
+bool dependency_analyzer::check_which_version_is_higher(int row_id, int v1, int v2)
+{
+    // We need to check which version is higher.
+    // We can look in the history.
+
+    // Maybe we can just look at the history.
+    for (auto &change_history : h.change_history)
+    {
+        if (change_history.row_id != row_id)
+            continue;
+
+        int v1_idx = -1, v2_idx = -1;
+        for (int i = 0; i < change_history.row_op_list.size(); i++)
+        {
+            if (change_history.row_op_list[i].write_op_id == v1)
+                v1_idx = i;
+            if (change_history.row_op_list[i].write_op_id == v2)
+                v2_idx = i;
+        }
+
+        if (v1_idx == -1 || v2_idx == -1)
+            throw runtime_error("Version not found in history");
+
+        // Idk if right, it also depends on when the version is commited.
+        return v1_idx > v2_idx;
+    }
+
+    throw runtime_error("Not implemented yet");
+}
+
+bool dependency_analyzer::check_if_stmt_is_overwriten(int stmt_idx, int overwrite_awr_stmt, int bpm_stmt, int apm_stmt)
+{
+    // cerr << "stmt_idx: " << stmt_idx << endl;
+    // cerr << "overwrite_awr_stmt: " << overwrite_awr_stmt << endl;
+    // cerr << "bpm_stmt: " << bpm_stmt << endl;
+    // cerr << "apm_stmt: " << apm_stmt << endl;
+
+    // Sanity checks.
+    if (stmt_idx < 0 || overwrite_awr_stmt < 0 || bpm_stmt < 0 || apm_stmt < 0)
+        throw runtime_error("Negative values!");
+    if (bpm_stmt > overwrite_awr_stmt || apm_stmt < overwrite_awr_stmt)
+        throw runtime_error("bpm_stmt > overwrite_awr_stmt || apm_stmt < overwrite_awr_stmt");
+    if (f_stmt_usage[stmt_idx] != PREDICATE_MATCH || f_stmt_usage[bpm_stmt] != BEFORE_PREDICATE_MATCH || f_stmt_usage[apm_stmt] != AFTER_PREDICATE_MATCH || f_stmt_usage[overwrite_awr_stmt] != AFTER_WRITE_READ)
+        throw runtime_error("Invalid statement types");
+    if (f_txn_id_queue[bpm_stmt] != f_txn_id_queue[overwrite_awr_stmt] || f_txn_id_queue[apm_stmt] != f_txn_id_queue[overwrite_awr_stmt])
+        throw runtime_error("Transaction IDs do not match");
+
+    // { primary_key, version_key }
+    set<pair<int, int>> bpm_pv_pair, apm_pv_pair, predicate_match_pair, awr_pv_pair;
+    set<int> bpm_pk, apm_pk, predicate_match_pk, awr_pk;
+    read_stmt_output_into_pk_and_version(bpm_stmt, bpm_pv_pair, bpm_pk);
+    read_stmt_output_into_pk_and_version(apm_stmt, apm_pv_pair, apm_pk);
+    read_stmt_output_into_pk_and_version(stmt_idx, predicate_match_pair, predicate_match_pk);
+    read_stmt_output_into_pk_and_version(overwrite_awr_stmt, awr_pv_pair, awr_pk);
+
+    // We first compute the version set of the predicate.
+    set<pair<int, int>> vsr_pv_pair;
+    set<int> vsr_pk;
+    for (int vsr_stmt = bpm_stmt + 1; vsr_stmt < apm_stmt; vsr_stmt++)
+        if (f_stmt_usage[vsr_stmt] == VERSION_SET_READ)
+            read_stmt_output_into_pk_and_version(vsr_stmt, vsr_pv_pair, vsr_pk);
+
+    // We want to check if an element installed by the overwrite statement
+    // is a later version of an element part of the VSR.
+
+    // The row ids which have a higher version in the AWR than in the VSR of the predicate match.
+    set<int> rows_with_higher_version_in_awr;
+    for (auto [pk, v_awr] : awr_pv_pair)
+    {
+        if (vsr_pk.count(pk) == 0)
+            continue;
+        int v_vsr = -1;
+        for (auto [pk_vsr, v_vsr_] : vsr_pv_pair)
+            if (pk_vsr == pk)
+                v_vsr = v_vsr_;
+        if (v_vsr == -1)
+            throw runtime_error("Version not found in VSR");
+
+        // Need to check which version is higher.
+        // We can look in the history.
+        if (check_which_version_is_higher(pk, v_awr, v_vsr))
+            rows_with_higher_version_in_awr.insert(pk);
+    }
+
+    // Now we want to check if there is a row in `rows_with_higher_version_in_awr`
+    // which is only matched in one of `bpm` and `apm`.
+    for (auto pk : rows_with_higher_version_in_awr)
+        if (bpm_pk.contains(pk) ^ apm_pk.contains(pk))
+            return true;
+
+    return false;
+}
+
 // should be used after build_start_dependency
 void dependency_analyzer::build_OW_dependency()
 {
+    // Compute metrics and perform some sanity check.
+    // 1. The number of APM and BPM should be equal.
+    // 2. The number of APM and BPM should be equal to
+    //   the nr of update operations times `total_nr_predicate_matches`.
+    int total_nr_predicate_matches = 0;
+    int nr_apm = 0, nr_bpm = 0;
+    int nr_update_operations = 0;
+    for (int i = 0; i < stmt_num; i++)
+    {
+        if (f_stmt_usage[i] == UPDATE_WRITE || f_stmt_usage[i] == DELETE_WRITE || f_stmt_usage[i] == INSERT_WRITE)
+            nr_update_operations++;
+        if (f_stmt_usage[i] == AFTER_PREDICATE_MATCH)
+            nr_apm++;
+        if (f_stmt_usage[i] == BEFORE_PREDICATE_MATCH)
+            nr_bpm++;
+        if (f_stmt_usage[i] == PREDICATE_MATCH)
+            total_nr_predicate_matches++;
+    }
+    if (nr_apm != nr_bpm || nr_apm != nr_update_operations * total_nr_predicate_matches)
+    {
+        cerr << "nr_apm: " << nr_apm << endl;
+        cerr << "nr_bpm: " << nr_bpm << endl;
+        cerr << "nr_update_operations: " << nr_update_operations << endl;
+        cerr << "total_nr_predicate_matches: " << total_nr_predicate_matches << endl;
+        throw runtime_error("nr_apm != nr_bpm || nr_apm != nr_update_operations * total_nr_predicate_matches");
+    }
+
+    // Directly Predicate-Anti-Depends.
+    // Part 2 of Directly Predicate-Write-Depends.
+
+    for (int i = 0, processed_predicates = 0; i < stmt_num; i++)
+    {
+        if (f_stmt_usage[i] != PREDICATE_MATCH)
+            continue;
+        processed_predicates++;
+
+        // cerr << "Processing predicate match nr #" << processed_predicates << " at stmt #" << i << endl;
+
+        // We are looking for the `processed_predicates`-th predicate match.
+        for (int j = 0, processed_updates = 0; j < stmt_num; j++)
+        {
+            if (f_stmt_usage[j] != UPDATE_WRITE && f_stmt_usage[j] != DELETE_WRITE && f_stmt_usage[j] != INSERT_WRITE)
+                continue;
+            processed_updates++;
+
+            // We are looking for the `processed_predicates`-th predicate match.
+            int nr_bpm_to_skip = (processed_updates - 1) * total_nr_predicate_matches + processed_predicates;
+            int nr_apm_to_skip = nr_bpm_to_skip;
+            int bpm_stmt = -1, apm_stmt = -1;
+
+            while (nr_bpm_to_skip)
+            {
+                bpm_stmt++;
+                if (bpm_stmt == stmt_num)
+                    throw runtime_error("nr_bpm_to_skip is too large");
+                if (f_stmt_usage[bpm_stmt] == BEFORE_PREDICATE_MATCH)
+                    nr_bpm_to_skip--;
+            }
+
+            while (nr_apm_to_skip)
+            {
+                apm_stmt++;
+                if (apm_stmt == stmt_num)
+                    throw runtime_error("nr_apm_to_skip is too large");
+                if (f_stmt_usage[apm_stmt] == AFTER_PREDICATE_MATCH)
+                    nr_apm_to_skip--;
+            }
+
+            if (f_stmt_usage[bpm_stmt] != BEFORE_PREDICATE_MATCH)
+                throw runtime_error("bpm_stmt is not BEFORE_PREDICATE_MATCH");
+            if (f_stmt_usage[apm_stmt] != AFTER_PREDICATE_MATCH)
+                throw runtime_error("apm_stmt is not AFTER_PREDICATE_MATCH");
+            if (f_txn_id_queue[bpm_stmt] != f_txn_id_queue[j] || f_txn_id_queue[apm_stmt] != f_txn_id_queue[j])
+                throw runtime_error("Transaction IDs do not match");
+
+            int awr = j + 1;
+            if (f_stmt_usage[awr] != AFTER_WRITE_READ)
+            {
+                cerr << "j: " << f_stmt_usage[j] << endl;
+                cerr << "awr: " << f_stmt_usage[awr] << endl;
+                cerr << "awr+1: " << f_stmt_usage[awr + 1] << endl;
+
+                throw runtime_error("awr is not AFTER_WRITE_READ");
+            }
+            if (f_txn_id_queue[awr] != f_txn_id_queue[j])
+                throw runtime_error("Transaction IDs do not match");
+
+            if (check_if_stmt_is_overwriten(i, awr, bpm_stmt, apm_stmt))
+                build_stmt_depend_from_stmt_idx(j, i, OVERWRITE_DEPEND);
+        }
+    }
+
+    return;
     // if (tid_begin_idx == NULL || tid_strict_begin_idx == NULL || tid_end_idx == NULL) {
     //     cerr << "you should not use build_VS_dependency before build_start_dependency" << endl;
     //     throw runtime_error("you should not use build_VS_dependency before build_start_dependency");
@@ -358,6 +585,9 @@ void dependency_analyzer::build_OW_dependency()
                 orginal_index = j;
                 break;
             }
+            // Should be same transaction
+            if (f_txn_id_queue[j] != i_tid)
+                throw std::runtime_error(format("Expected tid {} but found {}", i_tid, f_txn_id_queue[j]));
         }
         if (orginal_index == -1)
         {
@@ -377,6 +607,7 @@ void dependency_analyzer::build_OW_dependency()
             }
         }
 
+        // We now have the VSR statement i, and the AWR / READ operation in original_index.
         for (int j = 0; j < stmt_num; j++)
         {
             auto &j_tid = f_txn_id_queue[j];
@@ -520,6 +751,27 @@ void dependency_analyzer::build_start_dependency()
  */
 void dependency_analyzer::build_stmt_instrument_dependency()
 {
+    // Given an instrumentation statement, returns the statement before it / after it which it instruments.
+    auto find_instrumented_stmt = [&](int instr_stmt_idx, int direction)
+    {
+        if (!stmt_basic_type_is_instrumentation(f_stmt_usage[instr_stmt_idx].stmt_type))
+            throw runtime_error("BUG: stmt is not an instrumentation statement");
+
+        for (int idx = instr_stmt_idx;; idx += direction)
+        {
+            // Should not be out of range.
+            if (idx < 0 || idx >= stmt_num)
+                throw runtime_error("BUG: idx out of range, no instrumented stmt found");
+
+            // Should not be from a different transaction.
+            if (f_txn_id_queue[idx] != f_txn_id_queue[instr_stmt_idx])
+                throw runtime_error("BUG: different transaction id, no instrumented stmt found");
+
+            if (!stmt_basic_type_is_instrumentation(f_stmt_usage[idx].stmt_type))
+                return idx;
+        }
+    };
+
     for (int i = 0; i < stmt_num; i++)
     {
         auto cur_usage = f_stmt_usage[i];
@@ -607,7 +859,23 @@ void dependency_analyzer::build_stmt_instrument_dependency()
                 throw runtime_error(err_info);
             }
 
+            // TODO: Check if we really want to do that.
             build_stmt_depend_from_stmt_idx(i, normal_pos, INSTRUMENT_DEPEND);
+        }
+        else if (cur_usage == BEFORE_PREDICATE_MATCH)
+        {
+            int instr_stmt_idx = find_instrumented_stmt(i, 1);
+            build_stmt_depend_from_stmt_idx(instr_stmt_idx, i, INSTRUMENT_DEPEND);
+        }
+        else if (cur_usage == AFTER_PREDICATE_MATCH)
+        {
+            int instr_stmt_idx = find_instrumented_stmt(i, -1);
+            build_stmt_depend_from_stmt_idx(instr_stmt_idx, i, INSTRUMENT_DEPEND);
+        }
+        else if (cur_usage == PREDICATE_MATCH)
+        {
+            int instr_stmt_idx = find_instrumented_stmt(i, 1);
+            build_stmt_depend_from_stmt_idx(instr_stmt_idx, i, INSTRUMENT_DEPEND);
         }
     }
 }
@@ -722,6 +990,139 @@ void dependency_analyzer::print_dependency_graph()
     }
 }
 
+bool dependency_analyzer::check_any_transaction_cycle()
+{
+    // stores the edges of the DSG.
+    vector<set<pair<int, dependency_type>>> dsg(tid_num);
+
+    // Add the dependency_graph edges to the DSG.
+    for (auto i : ranges::iota_view(0, tid_num))
+    {
+        for (auto j : ranges::iota_view(0, tid_num))
+        {
+            // Ignore self-edges.
+            if (i == j)
+                continue;
+
+            for (auto &dt : dependency_graph[i][j])
+            {
+                dsg[i].insert({j, dt});
+            }
+        }
+    }
+
+    // Add statement edges to the DSG.
+    for (auto &[stmt_pair, dt_set] : stmt_dependency_graph)
+    {
+        auto [stmt1, stmt2] = stmt_pair;
+        int trans1 = stmt1.txn_id, trans2 = stmt2.txn_id;
+
+        // Ignore self-edges.
+        if (trans1 == trans2)
+            continue;
+
+        for (auto &dt : dt_set)
+        {
+            dsg[trans1].insert({trans2, dt});
+        }
+    }
+
+    // Remove all START_DEPENDS and STRICT_START_DEPENDS.
+    for (auto i : ranges::iota_view(0, tid_num))
+    {
+        for (auto j : ranges::iota_view(0, tid_num))
+        {
+            dsg[i].erase({j, START_DEPEND});
+            dsg[i].erase({j, STRICT_START_DEPEND});
+        }
+    }
+
+    // Check for any cycles.
+    // TODO: Check for cycles of some specific type.
+
+    // If a node was already visited.
+    vector<int> visited(tid_num, 0);
+    // If a node is currently being visited.
+    vector<int> is_active(tid_num, 0);
+    // The parent of a node.
+    vector<int> node_parent(tid_num, -1);
+    vector<int> node_parent_edge_type(tid_num, -1);
+
+    // Stores a cycle if one is found.
+    bool cycle_found = false;
+    vector<pair<int, int>> cycle;
+
+    println("There are {} transactions.", tid_num);
+    for (auto i : ranges::iota_view(0, tid_num))
+    {
+        println("Transaction {} has {} edges.", i, dsg[i].size());
+        for (auto &[neighbour, dep_type] : dsg[i])
+        {
+            println("    -> Transaction {} with dependency type {}", neighbour, (int)dep_type);
+        }
+    }
+
+    cerr << "Checking for cycles in the dependency graph... ";
+    function<void(int, int, int)> Dfs = [&](int node, int parent, int type)
+    {
+        if (cycle_found)
+            return;
+
+        // Found a cycle.
+        if (is_active[node])
+        {
+            assert(cycle_found == false);
+            cycle_found = true;
+            cycle.push_back({parent, -1});
+            for (int cnt = parent; cnt != node; cnt = node_parent[cnt])
+            {
+                assert(cnt != -1);
+                cycle.push_back({node_parent[cnt], node_parent_edge_type[cnt]});
+            }
+            return;
+        }
+
+        // Node is already visited.
+        if (visited[node])
+            return;
+
+        // Mark the node as active and visited, call recursively.
+        node_parent[node] = parent;
+        node_parent_edge_type[node] = type;
+        is_active[node] = 1;
+        visited[node] = 1;
+
+        for (auto [neighbour, dep_type] : dsg[node])
+        {
+            Dfs(neighbour, node, dep_type);
+        }
+
+        // Mark the node as inactive.
+        is_active[node] = 0;
+    };
+
+    // Start a DFS from all nodes.
+    for (auto i : ranges::iota_view(0, tid_num))
+    {
+        Dfs(i, -1, -1);
+    }
+
+    if (cycle_found)
+    {
+        cerr << RED << "Cycle found in the dependency graph." << RESET << endl;
+        cerr << "Cycle: ";
+        cerr << format("Txn {}", cycle[0].first);
+        for (auto &node : cycle | ranges::views::reverse)
+        {
+            cerr << format(" --> Txn {}", node.first);
+        }
+        cerr << endl;
+        return true;
+    }
+    cerr << "done." << endl;
+    return false;
+}
+
 dependency_analyzer::dependency_analyzer(vector<stmt_output> &init_output,
                                          vector<stmt_output> &total_output,
                                          vector<int> &final_tid_queue,
@@ -803,6 +1204,30 @@ dependency_analyzer::dependency_analyzer(vector<stmt_output> &init_output,
         }
     }
 
+    cerr << "Checking if the pk, vk are all distinct... ";
+    set<pair<int, int>> pk_vk_set;
+
+    for (int i = 0; i < stmt_num; i++)
+    {
+        // Ignore non-write
+        if (f_stmt_usage[i] != AFTER_WRITE_READ)
+            continue;
+
+        set<pair<int, int>> pkvk;
+        set<int> pk;
+        read_stmt_output_into_pk_and_version(i, pkvk, pk);
+        for (auto &p : pkvk)
+        {
+            if (pk_vk_set.contains(p))
+            {
+                cerr << "pk: " << p.first << " vk: " << p.second << " is not distinct" << endl;
+                throw runtime_error("pk, vk are not distinct");
+            }
+            pk_vk_set.insert(p);
+        }
+    }
+    cerr << "done." << endl;
+
     // first build instrument dependency, make sure that the instrument is correct
     build_stmt_instrument_dependency();
 
@@ -818,11 +1243,17 @@ dependency_analyzer::dependency_analyzer(vector<stmt_output> &init_output,
                 continue;
             if (op_unit.stmt_u == AFTER_WRITE_READ)
                 continue;
-            build_WR_dependency(row_op_list, i); // it is a read itself
+
+            // Directly Item-Read-Depends.
+            build_directly_read_dependency(row_op_list, i); // it is a read itself
+
             if (op_unit.stmt_u == BEFORE_WRITE_READ)
             {
-                build_WW_dependency(row_op_list, i);
-                build_RW_dependency(row_op_list, i);
+                // Directly Item-Write-Depends.
+                build_directly_write_dependency(row_op_list, i);
+
+                // Directly Item-Anti-Depends.
+                build_directly_item_anti_dependency(row_op_list, i);
             }
         }
     }
@@ -831,7 +1262,14 @@ dependency_analyzer::dependency_analyzer(vector<stmt_output> &init_output,
     build_start_dependency();
 
     // build version_set depend and overwrite depend that should be build after start depend
+    // Directly Predicate-Read-Depends.
+    // Part 1 of Directly Predicate-Write-Depends.
     build_VS_dependency();
+
+    // TODO:
+    // Directly Predicate-Anti-Depends.
+    // Part 2 of Directly Predicate-Write-Depends.
+
     build_OW_dependency();
 
     // generate stmt inner depend
