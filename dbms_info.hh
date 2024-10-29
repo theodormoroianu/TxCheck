@@ -8,6 +8,9 @@
 
 using namespace std;
 
+/**
+ * Configuration of a DBMS.
+ */
 struct dbms_info
 {
     string dbms_name;

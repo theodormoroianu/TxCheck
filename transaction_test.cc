@@ -77,13 +77,17 @@ void transaction_test::gen_txn_stmts()
 
     // Schema of the current database state.
     db_schema = get_schema(test_dbms_info);
+
+    cerr << "There are " << trans_num << " transactions." << endl;
     for (int tid = 0; tid < trans_num; tid++)
     {
         trans_arr[tid].dut = dut_setup(test_dbms_info);
         stmt_pos_of_trans[tid] = 0;
 
+        cerr << "Generating statements for one transaction ... ";
         // save 2 stmts for begin and commit/abort
         gen_stmts_for_one_txn(db_schema, trans_arr[tid].stmt_num - 2, trans_arr[tid].stmts, test_dbms_info);
+        cerr << "done" << endl;
         // insert begin and end stmts
         trans_arr[tid].stmts.insert(trans_arr[tid].stmts.begin(),
                                     make_shared<txn_string_stmt>((prod *)0, trans_arr[tid].dut->begin_stmt()));
@@ -256,6 +260,12 @@ bool transaction_test::analyze_txn_dependency(shared_ptr<dependency_analyzer> &d
     //     return true;
     // }
     cerr << "done" << endl;
+
+    if (da->check_any_transaction_cycle() == true)
+    {
+        cerr << "check_any_cycle violate!!" << endl;
+        return true;
+    }
 
     return false;
 }
@@ -1179,6 +1189,112 @@ void infer_instrument_after_blocking(vector<shared_ptr<prod>> &whole_before_stmt
     after_stmt_usage = final_after_stmt_usage;
 }
 
+void transaction_test::remove_separated_blocks()
+{
+    cerr << "removing separated blocks ... ";
+    stmt_queue = real_stmt_queue;
+    tid_queue = real_tid_queue;
+    stmt_use = real_stmt_usage;
+    vector<int> block_to_use(stmt_num, -1);
+
+    // From left to right.
+    map<int, int> txn_to_block;
+    for (int i = 0; i < stmt_num; i++)
+    {
+        auto tid = tid_queue[i];
+
+        // If not instrumented, add it as a block.
+        if (!stmt_use[i].is_instrumented)
+            txn_to_block[tid] = i;
+
+        // If i is not instrumented, or is instrumented to be after, then it is a block.
+        // TODO: Move instrumentation_is_before to the intrumentation type, as we are loosing it
+        // when switching to INIT_TYPE.
+        if (!stmt_use[i].is_instrumented || !instrumentation_is_before(stmt_use[i].stmt_type))
+        {
+            if (txn_to_block.count(tid) == 0)
+                throw runtime_error("BUG: txn_to_block.count(tid) == 0");
+            block_to_use[i] = txn_to_block[tid];
+        }
+    }
+
+    // From right to left.
+    txn_to_block.clear();
+    for (int i = stmt_num - 1; i >= 0; i--)
+    {
+        auto tid = tid_queue[i];
+
+        // If not instrumented, add it as a block.
+        if (!stmt_use[i].is_instrumented)
+            txn_to_block[tid] = i;
+
+        // If i is not instrumented, or is instrumented to be before, then it is a block.
+        if (!stmt_use[i].is_instrumented || instrumentation_is_before(stmt_use[i].stmt_type))
+        {
+            if (txn_to_block.count(tid) == 0)
+                throw runtime_error("BUG: txn_to_block.count(tid) == 0");
+            block_to_use[i] = txn_to_block[tid];
+        }
+    }
+
+    vector<shared_ptr<prod>> clean_stmt_queue;
+    vector<int> clean_tid_queue;
+    vector<stmt_usage> clean_stmt_usage_queue;
+    stmt_num = stmt_queue.size();
+
+    // stuff that does with stmt.
+    vector<vector<int>> blocks(stmt_num);
+
+    for (int i = 0; i < stmt_num; i++)
+    {
+        auto block = block_to_use[i];
+        if (block == -1)
+            throw runtime_error("BUG: block == -1");
+        blocks[block].push_back(i);
+    }
+
+    for (int i = 0; i < stmt_num; i++)
+    {
+        if (blocks[i].empty())
+            continue;
+
+        // Check it's a contiguous block.
+        if (!is_sorted(blocks[i].begin(), blocks[i].end()))
+            throw runtime_error("BUG: !is_sorted(blocks[i].begin(), blocks[i].end())");
+
+        // Ignore block.
+        if ((int)blocks[i].size() != blocks[i].back() - blocks[i].front() + 1)
+            continue;
+
+        // Copy the statements to the clean queues.
+        for (auto j : blocks[i])
+        {
+            clean_stmt_queue.push_back(stmt_queue[j]);
+            clean_tid_queue.push_back(tid_queue[j]);
+            clean_stmt_usage_queue.push_back(stmt_use[j]);
+        }
+    }
+
+    stmt_queue = clean_stmt_queue;
+    tid_queue = clean_tid_queue;
+    stmt_use = clean_stmt_usage_queue;
+    stmt_num = stmt_queue.size();
+
+    cerr << "done" << endl;
+
+    clear_execution_status();
+
+    // Remove instrumentation, to take into account modified predicate matches.
+    clean_instrument();
+
+    instrument_txn_stmts();
+    original_stmt_queue = stmt_queue;
+    original_stmt_use = stmt_use;
+    original_tid_queue = tid_queue;
+
+    trans_test(false);
+}
+
 /**
  * Runs a test on the transaction.
  * The trasactions, transaction statements, and the database content are set before calling this function.
@@ -1205,10 +1321,32 @@ bool transaction_test::multi_stmt_round_test()
     original_stmt_use = stmt_use;
     original_tid_queue = tid_queue;
 
+    cerr << "Running test with instrumentation ... ";
     trans_test(false); // first run, get all dependency information
+    cerr << "done" << endl;
+
+    remove_separated_blocks();
+
+    for (int i = 0; i < stmt_queue.size(); i++)
+    {
+        auto stmt_str = print_stmt_to_string(stmt_queue[i]);
+        if (stmt_str.find(SPACE_HOLDER_STMT) == string::npos)
+            continue;
+        if (stmt_str.length() > string(SPACE_HOLDER_STMT).length() + 3)
+            continue;
+        assert(false);
+    }
+
+    // vector<string> stmts_as_str;
+    // for (auto i : real_stmt_queue)
+    //     stmts_as_str.push_back(print_stmt_to_string(i));
+
     shared_ptr<dependency_analyzer> init_da;
     if (analyze_txn_dependency(init_da))
         throw runtime_error("BUG: found in analyze_txn_dependency()");
+
+    // We only care about the dependencies.
+    return false;
 
     // record init status
     auto init_stmt_queue = stmt_queue;
@@ -1370,8 +1508,6 @@ bool transaction_test::multi_stmt_round_test()
     return false;
 }
 
-// change stmt_queue, stmt_use, and tid_queue but not change trans[tid] related data
-// This is because of blocking behaviour.
 void transaction_test::block_scheduling()
 {
     cerr << "block scheduling ... ";

@@ -563,6 +563,14 @@ int generate_database(dbms_info &d_info)
     return 0;
 }
 
+/**
+ * Generate statements for one transaction.
+ *
+ * @param db_schema: the schema of the current database state.
+ * @param trans_stmt_num: the number of statements to generate.
+ * @param trans_rec: the vector to store the generated statements.
+ * @param d_info: the database information.
+ */
 void gen_stmts_for_one_txn(shared_ptr<schema> &db_schema,
                            int trans_stmt_num,
                            vector<shared_ptr<prod>> &trans_rec,
