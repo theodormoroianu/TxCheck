@@ -111,11 +111,13 @@ public:
     void clean_instrument();
 
     // Deletes the statements that are not executed together with their instrumentation.
-    void remove_separated_blocks();
+    // Returns true if it was able to do so, false otherwise.
+    bool remove_separated_and_invalid_blocks();
 
     // change stmt_queue, stmt_use, and tid_queue but not change trans[tid] related data.
     // While the statement order is different when ran, replace the order with the new one. Statements not ran are replaced with a placeholder.
-    void block_scheduling();
+    // returns true if the scheduling was possible, false otherwise.
+    bool block_scheduling();
 
     // Change the status of a transaction.
     // Returns true if the status was updated, false if not needed.
@@ -139,7 +141,10 @@ public:
     void normal_stmt_test(vector<stmt_id> &stmt_path);
     bool check_normal_stmt_result(vector<stmt_id> &stmt_path, bool debug = false);
 
-    void trans_test(bool debug_mode = true);
+    /**
+     * Returns `true` if it was able to schedule all statements, `false` otherwise.
+     */
+    bool trans_test(bool debug_mode = true);
     void retry_block_stmt(int cur_stmt_num, int *status_queue, bool debug_mode = true);
     int trans_test_unit(int stmt_pos, stmt_output &output, bool debug_mode = true);
 

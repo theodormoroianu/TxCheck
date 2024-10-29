@@ -432,7 +432,9 @@ void transaction_test::retry_block_stmt(int cur_stmt_num, int *status_queue, boo
             real_tid_queue.push_back(tid);
             real_stmt_queue.push_back(make_shared<txn_string_stmt>((prod *)0, SPACE_HOLDER_STMT));
             real_output_queue.push_back(output);
-            real_stmt_usage.push_back(stmt_usage(INIT_TYPE, su.is_instrumented));
+            real_stmt_usage.push_back(stmt_usage(
+                transform_to_deleted_stmt(su.stmt_type),
+                su.is_instrumented));
             status_queue[i] = 1;
         }
         else
@@ -453,6 +455,7 @@ void transaction_test::retry_block_stmt(int cur_stmt_num, int *status_queue, boo
         if (status_queue[stmt_pos] == 1)
             continue;
 
+        string stmt_str = print_stmt_to_string(stmt_queue[stmt_pos]);
         stmt_output output;
         auto is_executed = trans_test_unit(stmt_pos, output, debug_mode);
         // successfully execute the stmt, so label as not blocked
@@ -488,7 +491,9 @@ void transaction_test::retry_block_stmt(int cur_stmt_num, int *status_queue, boo
             real_tid_queue.push_back(tid);
             real_stmt_queue.push_back(make_shared<txn_string_stmt>((prod *)0, SPACE_HOLDER_STMT));
             real_output_queue.push_back(output);
-            real_stmt_usage.push_back(stmt_usage(INIT_TYPE, su.is_instrumented));
+            real_stmt_usage.push_back(stmt_usage(
+                transform_to_deleted_stmt(su.stmt_type),
+                su.is_instrumented));
         }
         else
         { // still blocked
@@ -503,7 +508,7 @@ void transaction_test::retry_block_stmt(int cur_stmt_num, int *status_queue, boo
  * Runs the transactions, and records the real execution order of the statements
  * in `real_tid_queue`, `real_stmt_queue`, `real_output_queue`, and `real_stmt_usage`.
  */
-void transaction_test::trans_test(bool debug_mode)
+bool transaction_test::trans_test(bool debug_mode)
 {
     dut_reset_to_backup(test_dbms_info);
     dut_get_content(test_dbms_info, init_db_content); // get initial database content
@@ -546,7 +551,9 @@ void transaction_test::trans_test(bool debug_mode)
             real_tid_queue.push_back(tid);
             real_stmt_queue.push_back(make_shared<txn_string_stmt>((prod *)0, SPACE_HOLDER_STMT));
             real_output_queue.push_back(output);
-            real_stmt_usage.push_back(stmt_usage(INIT_TYPE, su.is_instrumented));
+            real_stmt_usage.push_back(stmt_usage(
+                transform_to_deleted_stmt(su.stmt_type),
+                su.is_instrumented));
             continue;
         }
         status_queue[stmt_index] = 1;
@@ -579,8 +586,11 @@ void transaction_test::trans_test(bool debug_mode)
             executed++;
     }
     if (executed < stmt_num)
-        cerr << RED << "some stmt is still not executed, finish them" << RESET << endl;
-
+    {
+        cerr << RED << "UNABLE TO SCHEDULE ALL STATEMENTS" << RESET << "  ";
+        // cerr << RED << "some stmt is still not executed, finish them" << RESET << endl;
+        return false;
+    }
     // Try to execute the blocked statements.
     // Stop if we executed all statements, or if we didn't execute any new statements.
     while (executed < stmt_num)
@@ -664,6 +674,7 @@ void transaction_test::trans_test(bool debug_mode)
 
     // collect database information
     dut_get_content(test_dbms_info, trans_db_content);
+    return true;
 }
 
 /**
@@ -846,6 +857,7 @@ bool transaction_test::fork_if_server_closed(dbms_info &d_info)
 // Note: txn_string_stmt contains begin, commit, abort, select 1 where 0<>0 and select * from t
 bool transaction_test::refine_stmt_queue(vector<stmt_id> &stmt_path, shared_ptr<dependency_analyzer> &da)
 {
+    throw runtime_error("SHOULD NEVER GET HERE.");
     cerr << "graph decycling ... ";
     // refine txn_stmt because the skipped stmt has been changed
     int stmt_pos_of_txn[trans_num];
@@ -1189,13 +1201,32 @@ void infer_instrument_after_blocking(vector<shared_ptr<prod>> &whole_before_stmt
     after_stmt_usage = final_after_stmt_usage;
 }
 
-void transaction_test::remove_separated_blocks()
+bool transaction_test::remove_separated_and_invalid_blocks()
 {
+    /**
+     * IMPORTANT
+     *
+     * This function no longer has to remove unused statements, as we guarantee
+     * by construction that all statements are used:
+     * if no schedule is found, then the testcase is rejected.
+     */
     cerr << "removing separated blocks ... ";
     stmt_queue = real_stmt_queue;
     tid_queue = real_tid_queue;
     stmt_use = real_stmt_usage;
     vector<int> block_to_use(stmt_num, -1);
+
+    for (int i = 0; i < stmt_num; i++)
+    {
+        if (stmt_use[i].stmt_type == INIT_TYPE && stmt_use[i].is_instrumented)
+        {
+            cerr << "i = " << i << endl;
+            cerr << "stmt_use[i].stmt_type = " << stmt_use[i].stmt_type << endl;
+            cerr << "stmt_use[i].is_instrumented = true" << endl;
+            cerr << "Can't have instrumentation converted to INIT_TYPE" << endl;
+            throw runtime_error("stmt_use[i].stmt_type == INIT_TYPE");
+        }
+    }
 
     // From left to right.
     map<int, int> txn_to_block;
@@ -1266,6 +1297,16 @@ void transaction_test::remove_separated_blocks()
         if ((int)blocks[i].size() != blocks[i].back() - blocks[i].front() + 1)
             continue;
 
+        // Check if any instrumentation or statement was removed.
+        bool has_deleted_statements = false;
+        for (auto j : blocks[i])
+        {
+            if (stmt_use[j].stmt_type == OLD_INSTRUMENTATION_AFTER || stmt_use[j].stmt_type == OLD_INSTRUMENTATION_BEFORE)
+                has_deleted_statements = true;
+        }
+        if (has_deleted_statements)
+            continue;
+
         // Copy the statements to the clean queues.
         for (auto j : blocks[i])
         {
@@ -1292,7 +1333,7 @@ void transaction_test::remove_separated_blocks()
     original_stmt_use = stmt_use;
     original_tid_queue = tid_queue;
 
-    trans_test(false);
+    return trans_test(false);
 }
 
 /**
@@ -1301,7 +1342,8 @@ void transaction_test::remove_separated_blocks()
  */
 bool transaction_test::multi_stmt_round_test()
 {
-    block_scheduling(); // it will make many stmts fails, we replace these failed stmts with space holder
+    if (!block_scheduling())
+        return false; // it will make many stmts fails, we replace these failed stmts with space holder
     // delete replaced stmts
     for (int i = 0; i < stmt_queue.size(); i++)
     {
@@ -1322,11 +1364,14 @@ bool transaction_test::multi_stmt_round_test()
     original_tid_queue = tid_queue;
 
     cerr << "Running test with instrumentation ... ";
-    trans_test(false); // first run, get all dependency information
+    if (!trans_test(false))
+        return false; // first run, get all dependency information
     cerr << "done" << endl;
 
-    remove_separated_blocks();
+    if (!remove_separated_and_invalid_blocks())
+        return false;
 
+    // Sanity checks.
     for (int i = 0; i < stmt_queue.size(); i++)
     {
         auto stmt_str = print_stmt_to_string(stmt_queue[i]);
@@ -1336,7 +1381,20 @@ bool transaction_test::multi_stmt_round_test()
             continue;
         assert(false);
     }
+    for (int i = 0; i < stmt_num; i++)
+    {
+        cerr << i << "  " << real_tid_queue[i] << "  " << stmt_basic_type_to_string(real_stmt_usage[i].stmt_type) << "  " << real_stmt_usage[i].is_instrumented << endl;
+    }
 
+    for (int i = 0; i < stmt_num; i++)
+    {
+        auto usage = real_stmt_usage[i].stmt_type;
+        if (usage == OLD_INSTRUMENTATION_AFTER || usage == OLD_INSTRUMENTATION_BEFORE)
+        {
+            cerr << "stmt_use[" << i << "].stmt_type = " << usage << endl;
+            throw runtime_error("stmt_use[i].stmt_type is forbidden type");
+        }
+    }
     // vector<string> stmts_as_str;
     // for (auto i : real_stmt_queue)
     //     stmts_as_str.push_back(print_stmt_to_string(i));
@@ -1348,173 +1406,175 @@ bool transaction_test::multi_stmt_round_test()
     // We only care about the dependencies.
     return false;
 
-    // record init status
-    auto init_stmt_queue = stmt_queue;
-    auto init_tid_queue = tid_queue;
-    auto init_stmt_usage = stmt_use;
-    txn_status init_txn_status[trans_num];
-    vector<shared_ptr<prod>> init_txn_stmt[trans_num];
-    for (int tid = 0; tid < trans_num; tid++)
-    {
-        init_txn_status[tid] = trans_arr[tid].status;
-        init_txn_stmt[tid] = trans_arr[tid].stmts;
-    }
-    set<stmt_id> deleted_nodes;
-    set<stmt_id> all_nodes;
-    for (int i = 0; i < stmt_num; i++)
-    {
-        auto tid = tid_queue[i];
-        if (init_txn_status[tid] != TXN_COMMIT)
-            continue;
-        all_nodes.insert(stmt_id(tid_queue, i));
-    }
+    // // record init status
+    // auto init_stmt_queue = stmt_queue;
+    // auto init_tid_queue = tid_queue;
+    // auto init_stmt_usage = stmt_use;
+    // txn_status init_txn_status[trans_num];
+    // vector<shared_ptr<prod>> init_txn_stmt[trans_num];
+    // for (int tid = 0; tid < trans_num; tid++)
+    // {
+    //     init_txn_status[tid] = trans_arr[tid].status;
+    //     init_txn_stmt[tid] = trans_arr[tid].stmts;
+    // }
+    // set<stmt_id> deleted_nodes;
+    // set<stmt_id> all_nodes;
+    // for (int i = 0; i < stmt_num; i++)
+    // {
+    //     auto tid = tid_queue[i];
+    //     if (init_txn_status[tid] != TXN_COMMIT)
+    //         continue;
+    //     all_nodes.insert(stmt_id(tid_queue, i));
+    // }
 
-    int round_count = 1;
-    int stmt_path_empty_time = 0;
-    while (1)
-    { // until there is not statement in the stmt path
-        auto longest_stmt_path = init_da->topological_sort_path(deleted_nodes);
-        if (longest_stmt_path.empty())
-        {
-            cerr << "ideal longest_stmt_path is empty, skip this graph" << endl;
-            break;
-        }
+    // int round_count = 1;
+    // int stmt_path_empty_time = 0;
+    // while (1)
+    // { // until there is not statement in the stmt path
+    //     auto longest_stmt_path = init_da->topological_sort_path(deleted_nodes);
+    //     if (longest_stmt_path.empty())
+    //     {
+    //         cerr << "ideal longest_stmt_path is empty, skip this graph" << endl;
+    //         break;
+    //     }
 
-        cerr << "\n\n";
-        cerr << "test round: " << round_count << endl;
-        round_count++;
-        // cerr << "available nodes: ";
-        // for (auto& node: all_nodes) {
-        //     if (deleted_nodes.count(node) > 0)
-        //         continue;
-        //     if (node.stmt_idx_in_txn == 0) // skip begin
-        //         continue;
-        //     if (trans_arr[node.txn_id].stmts.size() - 1 == node.stmt_idx_in_txn) // skip commit
-        //         continue;
-        //     cerr << "(" << node.txn_id << "." << node.stmt_idx_in_txn << ") ";
-        // }
-        // cerr << endl;
-        // cerr << "ideal test stmt path: ";
-        // print_stmt_path(longest_stmt_path, init_da->stmt_dependency_graph);
+    //     cerr << "\n\n";
+    //     cerr << "test round: " << round_count << endl;
+    //     round_count++;
+    //     // cerr << "available nodes: ";
+    //     // for (auto& node: all_nodes) {
+    //     //     if (deleted_nodes.count(node) > 0)
+    //     //         continue;
+    //     //     if (node.stmt_idx_in_txn == 0) // skip begin
+    //     //         continue;
+    //     //     if (trans_arr[node.txn_id].stmts.size() - 1 == node.stmt_idx_in_txn) // skip commit
+    //     //         continue;
+    //     //     cerr << "(" << node.txn_id << "." << node.stmt_idx_in_txn << ") ";
+    //     // }
+    //     // cerr << endl;
+    //     // cerr << "ideal test stmt path: ";
+    //     // print_stmt_path(longest_stmt_path, init_da->stmt_dependency_graph);
 
-        // use the longest path to refine
-        bool empty_stmt_path = false;
-        shared_ptr<dependency_analyzer> tmp_da = init_da;
+    //     // use the longest path to refine
+    //     bool empty_stmt_path = false;
+    //     shared_ptr<dependency_analyzer> tmp_da = init_da;
 
-        while (refine_stmt_queue(longest_stmt_path, tmp_da) == true)
-        { // will change some stmts to space holder
-            // cerr << YELLOW << "previous instrmented stmt_queue length: " << stmt_queue.size() << RESET << endl;
+    //     while (refine_stmt_queue(longest_stmt_path, tmp_da) == true)
+    //     { // will change some stmts to space holder
+    //         // cerr << YELLOW << "previous instrmented stmt_queue length: " << stmt_queue.size() << RESET << endl;
 
-            auto tmp_whole_before_stmt_queue = stmt_queue;
-            auto tmp_whole_before_tid_queue = tid_queue;
-            auto tmp_whole_before_stmt_usage = stmt_use;
+    //         auto tmp_whole_before_stmt_queue = stmt_queue;
+    //         auto tmp_whole_before_tid_queue = tid_queue;
+    //         auto tmp_whole_before_stmt_usage = stmt_use;
 
-            clean_instrument();
-            // cerr << YELLOW << "cleared stmt_queue length: " << stmt_queue.size() << RESET << endl;
+    //         clean_instrument();
+    //         // cerr << YELLOW << "cleared stmt_queue length: " << stmt_queue.size() << RESET << endl;
 
-            block_scheduling(); // will change some stmts to space holder
-            // cerr << YELLOW << "scheduled stmt_queue length: " << stmt_queue.size() << RESET << endl;
-            infer_instrument_after_blocking(tmp_whole_before_stmt_queue,
-                                            tmp_whole_before_tid_queue,
-                                            tmp_whole_before_stmt_usage,
-                                            init_da,
-                                            stmt_queue,
-                                            tid_queue,
-                                            stmt_use);
-            // cerr << YELLOW << "first instrmented stmt_queue length: " << stmt_queue.size() << RESET << endl;
-            instrument_txn_stmts();
-            // cerr << YELLOW << "final instrmented stmt_queue length: " << stmt_queue.size() << RESET << endl;
+    //         block_scheduling(); // will change some stmts to space holder
+    //         // cerr << YELLOW << "scheduled stmt_queue length: " << stmt_queue.size() << RESET << endl;
+    //         infer_instrument_after_blocking(tmp_whole_before_stmt_queue,
+    //                                         tmp_whole_before_tid_queue,
+    //                                         tmp_whole_before_stmt_usage,
+    //                                         init_da,
+    //                                         stmt_queue,
+    //                                         tid_queue,
+    //                                         stmt_use);
+    //         // cerr << YELLOW << "first instrmented stmt_queue length: " << stmt_queue.size() << RESET << endl;
+    //         instrument_txn_stmts();
+    //         // cerr << YELLOW << "final instrmented stmt_queue length: " << stmt_queue.size() << RESET << endl;
 
-            // cerr << RED << "txn testing:" << RESET << endl;
-            trans_test(false);
-            if (analyze_txn_dependency(tmp_da))
-                throw runtime_error("BUG: found in analyze_txn_dependency()");
-            longest_stmt_path = tmp_da->topological_sort_path(deleted_nodes);
+    //         // cerr << RED << "txn testing:" << RESET << endl;
+    //         trans_test(false);
+    //         if (analyze_txn_dependency(tmp_da))
+    //             throw runtime_error("BUG: found in analyze_txn_dependency()");
+    //         longest_stmt_path = tmp_da->topological_sort_path(deleted_nodes);
 
-            // cerr << RED << "stmt path for refining: " << RESET;
-            // print_stmt_path(longest_stmt_path, tmp_da->stmt_dependency_graph);
-            if (longest_stmt_path.empty())
-            {
-                empty_stmt_path = true;
-                break;
-            }
-        }
+    //         // cerr << RED << "stmt path for refining: " << RESET;
+    //         // print_stmt_path(longest_stmt_path, tmp_da->stmt_dependency_graph);
+    //         if (longest_stmt_path.empty())
+    //         {
+    //             empty_stmt_path = true;
+    //             break;
+    //         }
+    //     }
 
-        if (empty_stmt_path)
-        {
-            stmt_path_empty_time++;
-            if (stmt_path_empty_time >= 3)
-            {
-                cerr << "generate " << stmt_path_empty_time << " times empty path, skip this graph" << endl;
-                break;
-            }
-        }
+    //     if (empty_stmt_path)
+    //     {
+    //         stmt_path_empty_time++;
+    //         if (stmt_path_empty_time >= 3)
+    //         {
+    //             cerr << "generate " << stmt_path_empty_time << " times empty path, skip this graph" << endl;
+    //             break;
+    //         }
+    //     }
 
-        // normal test and check
-        normal_stmt_test(longest_stmt_path);
-        if (check_normal_stmt_result(longest_stmt_path) == false)
-            return true;
+    //     // normal test and check
+    //     normal_stmt_test(longest_stmt_path);
+    //     if (check_normal_stmt_result(longest_stmt_path) == false)
+    //         return true;
 
-        // delete stmts from the stmt_dependency_graph
-        auto path_length = longest_stmt_path.size();
-        auto &stmt_graph = init_da->stmt_dependency_graph;
-        auto &init_da_tid_queue = init_da->f_txn_id_queue;
-        // cerr << "deleting node: ";
-        for (int i = 0; i < path_length; i++)
-        {
-            auto &cur_sid = longest_stmt_path[i];
-            // cerr << "(" << cur_sid.txn_id << "." << cur_sid.stmt_idx_in_txn << ") ";
-            auto queue_idx = cur_sid.transfer_2_stmt_idx(init_da_tid_queue);
-            auto idx_set = init_da->get_instrumented_stmt_set(queue_idx);
-            for (auto &delete_idx : idx_set)
-            {
-                auto chosen_stmt_id = stmt_id(init_da_tid_queue, delete_idx);
-                deleted_nodes.insert(chosen_stmt_id);
-                for (int j = 0; j < init_da->stmt_num; j++)
-                {
-                    auto another_stmt = stmt_id(init_da_tid_queue, j);
-                    auto out_branch = make_pair(chosen_stmt_id, another_stmt);
-                    auto in_branch = make_pair(another_stmt, chosen_stmt_id);
-                    // should not delete INSTRUMENT_DEPEND edge which is needed for get_instrument_set
-                    if (stmt_graph[in_branch].count(INSTRUMENT_DEPEND) > 0)
-                    {
-                        stmt_graph[in_branch].clear();
-                        stmt_graph[in_branch].insert(INSTRUMENT_DEPEND);
-                    }
-                    else
-                        stmt_graph.erase(in_branch);
-                    if (stmt_graph[out_branch].count(INSTRUMENT_DEPEND) > 0)
-                    {
-                        stmt_graph[out_branch].clear();
-                        stmt_graph[out_branch].insert(INSTRUMENT_DEPEND);
-                    }
-                    else
-                        stmt_graph.erase(out_branch);
-                }
-            }
-        }
-        // cerr << endl;
+    //     // delete stmts from the stmt_dependency_graph
+    //     auto path_length = longest_stmt_path.size();
+    //     auto &stmt_graph = init_da->stmt_dependency_graph;
+    //     auto &init_da_tid_queue = init_da->f_txn_id_queue;
+    //     // cerr << "deleting node: ";
+    //     for (int i = 0; i < path_length; i++)
+    //     {
+    //         auto &cur_sid = longest_stmt_path[i];
+    //         // cerr << "(" << cur_sid.txn_id << "." << cur_sid.stmt_idx_in_txn << ") ";
+    //         auto queue_idx = cur_sid.transfer_2_stmt_idx(init_da_tid_queue);
+    //         auto idx_set = init_da->get_instrumented_stmt_set(queue_idx);
+    //         for (auto &delete_idx : idx_set)
+    //         {
+    //             auto chosen_stmt_id = stmt_id(init_da_tid_queue, delete_idx);
+    //             deleted_nodes.insert(chosen_stmt_id);
+    //             for (int j = 0; j < init_da->stmt_num; j++)
+    //             {
+    //                 auto another_stmt = stmt_id(init_da_tid_queue, j);
+    //                 auto out_branch = make_pair(chosen_stmt_id, another_stmt);
+    //                 auto in_branch = make_pair(another_stmt, chosen_stmt_id);
+    //                 // should not delete INSTRUMENT_DEPEND edge which is needed for get_instrument_set
+    //                 if (stmt_graph[in_branch].count(INSTRUMENT_DEPEND) > 0)
+    //                 {
+    //                     stmt_graph[in_branch].clear();
+    //                     stmt_graph[in_branch].insert(INSTRUMENT_DEPEND);
+    //                 }
+    //                 else
+    //                     stmt_graph.erase(in_branch);
+    //                 if (stmt_graph[out_branch].count(INSTRUMENT_DEPEND) > 0)
+    //                 {
+    //                     stmt_graph[out_branch].clear();
+    //                     stmt_graph[out_branch].insert(INSTRUMENT_DEPEND);
+    //                 }
+    //                 else
+    //                     stmt_graph.erase(out_branch);
+    //             }
+    //         }
+    //     }
+    //     // cerr << endl;
 
-        stmt_queue = init_stmt_queue;
-        stmt_use = init_stmt_usage;
-        tid_queue = init_tid_queue;
-        stmt_num = stmt_queue.size();
-        for (int tid = 0; tid < trans_num; tid++)
-        {
-            trans_arr[tid].stmts = init_txn_stmt[tid];
-            change_txn_status(tid, init_txn_status[tid]);
-        }
-    }
-    return false;
+    //     stmt_queue = init_stmt_queue;
+    //     stmt_use = init_stmt_usage;
+    //     tid_queue = init_tid_queue;
+    //     stmt_num = stmt_queue.size();
+    //     for (int tid = 0; tid < trans_num; tid++)
+    //     {
+    //         trans_arr[tid].stmts = init_txn_stmt[tid];
+    //         change_txn_status(tid, init_txn_status[tid]);
+    //     }
+    // }
+    // return false;
 }
 
-void transaction_test::block_scheduling()
+bool transaction_test::block_scheduling()
 {
+    bool scheduling_ok = true;
     cerr << "block scheduling ... ";
     int round = 0;
     while (1)
     {
-        trans_test(false);
+        if (!trans_test(false))
+            scheduling_ok = false;
         if (stmt_queue == real_stmt_queue) // no failing
             break;
         stmt_queue = real_stmt_queue;
@@ -1525,6 +1585,7 @@ void transaction_test::block_scheduling()
     }
     clear_execution_status();
     cerr << "done" << endl;
+    return scheduling_ok;
 }
 
 /**

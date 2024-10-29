@@ -21,6 +21,8 @@ using namespace std;
 enum stmt_basic_type
 {
     INIT_TYPE, // replaced str or did not figure out yet
+    OLD_INSTRUMENTATION_BEFORE,
+    OLD_INSTRUMENTATION_AFTER,
     SELECT_READ,
     UPDATE_WRITE,
     INSERT_WRITE,
@@ -34,6 +36,15 @@ enum stmt_basic_type
 };
 
 bool stmt_basic_type_is_instrumentation(stmt_basic_type st);
+
+/**
+ * Converts a statement type to its corresponding deleted type.
+ *
+ * Non-instrumentation => INIT_TYPE.
+ * Instrumented before => OLD_INSTRUMENTATION_BEFORE
+ * Instrumented after  => OLD_INSTRUMENTATION_AFTER
+ */
+stmt_basic_type transform_to_deleted_stmt(stmt_basic_type st);
 
 /**
  * Returns true if the instrumentation is before the

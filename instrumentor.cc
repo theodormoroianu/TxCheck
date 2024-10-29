@@ -12,6 +12,8 @@ bool stmt_basic_type_is_instrumentation(stmt_basic_type st)
     case VERSION_SET_READ:
     case BEFORE_WRITE_READ:
     case AFTER_WRITE_READ:
+    case OLD_INSTRUMENTATION_BEFORE:
+    case OLD_INSTRUMENTATION_AFTER:
         return true;
 
     case DELETE_WRITE:
@@ -33,13 +35,30 @@ bool instrumentation_is_before(stmt_basic_type st)
     case BEFORE_WRITE_READ:
     case PREDICATE_MATCH:
     case VERSION_SET_READ:
+    case OLD_INSTRUMENTATION_BEFORE:
         return true;
     case AFTER_PREDICATE_MATCH:
     case AFTER_WRITE_READ:
+    case OLD_INSTRUMENTATION_AFTER:
         return false;
     default:
         throw runtime_error("Unknown stmt_basic_type");
     }
+}
+
+stmt_basic_type transform_to_deleted_stmt(stmt_basic_type st)
+{
+    assert(st != OLD_INSTRUMENTATION_AFTER && st != OLD_INSTRUMENTATION_BEFORE);
+
+    if (stmt_basic_type_is_instrumentation(st))
+    {
+        if (instrumentation_is_before(st))
+            return OLD_INSTRUMENTATION_BEFORE;
+        else
+            return OLD_INSTRUMENTATION_AFTER;
+    }
+    else
+        return INIT_TYPE;
 }
 
 string stmt_basic_type_to_string(stmt_basic_type st)
@@ -68,6 +87,10 @@ string stmt_basic_type_to_string(stmt_basic_type st)
         return "AFTER_PREDICATE_MATCH";
     case PREDICATE_MATCH:
         return "PREDICATE_MATCH";
+    case OLD_INSTRUMENTATION_BEFORE:
+        return "OLD_INSTRUMENTATION_BEFORE";
+    case OLD_INSTRUMENTATION_AFTER:
+        return "OLD_INSTRUMENTATION_AFTER";
     default:
         return "UNKNOWN";
     }

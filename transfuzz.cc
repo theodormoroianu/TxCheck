@@ -171,7 +171,7 @@ int fork_for_transaction_test(dbms_info &d_info)
     transaction_test::fork_if_server_closed(d_info);
 
     // TODO
-    child_pid = 0; // fork();
+    child_pid = fork();
     if (child_pid == 0)
     { // in child process
         try
@@ -286,7 +286,7 @@ int random_test(dbms_info &d_info)
     {
         // each round, generate random seed again, otherwise it will perform the same tests
         rand_seed = rd();
-        // rand_seed = 2075160906; // 3612474293;
+        // rand_seed = 589573350; // 3612474293;
         cerr << "\n\n";
         cerr << "random seed for tests: " << rand_seed << endl;
         smith::rng.seed(rand_seed);
