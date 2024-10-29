@@ -557,10 +557,6 @@ void dependency_analyzer::build_OW_dependency()
             if (check_if_stmt_is_overwriten(i, vsr_begin, vsr_end, awr, bpm_stmt, apm_stmt))
             {
                 build_stmt_depend_from_stmt_idx(i, j, OVERWRITE_DEPEND);
-                if (f_txn_id_queue[i] == 2 && f_txn_id_queue[j] == 4)
-                {
-                    cerr << "Overwrite detected: " << i << " -> " << j << endl;
-                }
             }
         }
     }
@@ -1068,15 +1064,15 @@ bool dependency_analyzer::check_any_transaction_cycle()
     bool cycle_found = false;
     vector<pair<int, int>> cycle;
 
-    println("There are {} transactions.", tid_num);
-    for (auto i : ranges::iota_view(0, tid_num))
-    {
-        println("Transaction {} has {} edges.", i, dsg[i].size());
-        for (auto &[neighbour, dep_type] : dsg[i])
-        {
-            println("    -> Transaction {} with dependency type {}", neighbour, (int)dep_type);
-        }
-    }
+    // println("There are {} transactions.", tid_num);
+    // for (auto i : ranges::iota_view(0, tid_num))
+    // {
+    //     println("Transaction {} has {} edges.", i, dsg[i].size());
+    //     for (auto &[neighbour, dep_type] : dsg[i])
+    //     {
+    //         println("    -> Transaction {} with dependency type {}", neighbour, (int)dep_type);
+    //     }
+    // }
 
     cerr << "Checking for cycles in the dependency graph... ";
     function<void(int, int, int)> Dfs = [&](int node, int parent, int type)
@@ -1125,6 +1121,16 @@ bool dependency_analyzer::check_any_transaction_cycle()
 
     if (cycle_found)
     {
+        println("There are {} transactions.", tid_num);
+        for (auto i : ranges::iota_view(0, tid_num))
+        {
+            println("Transaction {} has {} edges.", i, dsg[i].size());
+            for (auto &[neighbour, dep_type] : dsg[i])
+            {
+                println("    -> Transaction {} with dependency type {}", neighbour, (int)dep_type);
+            }
+        }
+
         cerr << RED << "Cycle found in the dependency graph." << RESET << endl;
         cerr << "Cycle: ";
         cerr << format("Txn {}", cycle[0].first);
@@ -1133,6 +1139,12 @@ bool dependency_analyzer::check_any_transaction_cycle()
             cerr << format(" --> Txn {}", node.first);
         }
         cerr << endl;
+
+        while (true)
+        {
+            // wait.
+            sleep(1);
+        }
         return true;
     }
     cerr << "done." << endl;
@@ -1220,7 +1232,7 @@ dependency_analyzer::dependency_analyzer(vector<stmt_output> &init_output,
         }
     }
 
-    cerr << "Checking if the pk, vk are all distinct... ";
+    cerr << "Checking if the pk, vk are all distinct (" << stmt_num << " statements)... ";
     set<pair<int, int>> pk_vk_set;
 
     for (int i = 0; i < stmt_num; i++)
@@ -1294,11 +1306,11 @@ dependency_analyzer::dependency_analyzer(vector<stmt_output> &init_output,
     // // print dependency graph
     // print_dependency_graph();
 
-    println("Printing the start and end of each transaction.");
-    for (int txn = 0; txn < tid_num; txn++)
-    {
-        println("Transaction {} starts at stmt {} and ends at stmt {}.", txn, tid_begin_idx[txn], tid_end_idx[txn]);
-    }
+    // println("Printing the start and end of each transaction.");
+    // for (int txn = 0; txn < tid_num; txn++)
+    // {
+    //     println("Transaction {} starts at stmt {} and ends at stmt {}.", txn, tid_begin_idx[txn], tid_end_idx[txn]);
+    // }
 }
 
 dependency_analyzer::~dependency_analyzer()

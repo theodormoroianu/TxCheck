@@ -78,16 +78,16 @@ void transaction_test::gen_txn_stmts()
     // Schema of the current database state.
     db_schema = get_schema(test_dbms_info);
 
-    cerr << "There are " << trans_num << " transactions." << endl;
+    // cerr << "There are " << trans_num << " transactions." << endl;
     for (int tid = 0; tid < trans_num; tid++)
     {
         trans_arr[tid].dut = dut_setup(test_dbms_info);
         stmt_pos_of_trans[tid] = 0;
 
-        cerr << "Generating statements for one transaction ... ";
+        // cerr << "Generating statements for one transaction ... ";
         // save 2 stmts for begin and commit/abort
         gen_stmts_for_one_txn(db_schema, trans_arr[tid].stmt_num - 2, trans_arr[tid].stmts, test_dbms_info);
-        cerr << "done" << endl;
+        // cerr << "done" << endl;
         // insert begin and end stmts
         trans_arr[tid].stmts.insert(trans_arr[tid].stmts.begin(),
                                     make_shared<txn_string_stmt>((prod *)0, trans_arr[tid].dut->begin_stmt()));
@@ -1321,12 +1321,11 @@ bool transaction_test::remove_separated_and_invalid_blocks()
     stmt_use = clean_stmt_usage_queue;
     stmt_num = stmt_queue.size();
 
-    cerr << "done" << endl;
-
     clear_execution_status();
 
     // Remove instrumentation, to take into account modified predicate matches.
     clean_instrument();
+    cerr << "done" << endl;
 
     instrument_txn_stmts();
     original_stmt_queue = stmt_queue;
@@ -1368,8 +1367,30 @@ bool transaction_test::multi_stmt_round_test()
         return false; // first run, get all dependency information
     cerr << "done" << endl;
 
-    if (!remove_separated_and_invalid_blocks())
-        return false;
+    while (true)
+    {
+        auto old_stmt_queue = real_stmt_queue;
+        auto old_tid_queue = real_tid_queue;
+        auto old_stmt_usage = real_stmt_usage;
+        if (!remove_separated_and_invalid_blocks())
+            return false;
+
+        if (old_stmt_queue.size() != real_stmt_queue.size())
+            continue;
+
+        bool different = false;
+        for (int i = 0; i < (int)old_stmt_queue.size(); i++)
+        {
+            if (old_tid_queue[i] != real_tid_queue[i] || old_stmt_usage[i] != real_stmt_usage[i])
+            {
+                different = true;
+                break;
+            }
+        }
+        if (different)
+            continue;
+        break;
+    }
 
     // Sanity checks.
     for (int i = 0; i < stmt_queue.size(); i++)
@@ -1381,17 +1402,18 @@ bool transaction_test::multi_stmt_round_test()
             continue;
         assert(false);
     }
-    for (int i = 0; i < stmt_num; i++)
-    {
-        cerr << i << "  " << real_tid_queue[i] << "  " << stmt_basic_type_to_string(real_stmt_usage[i].stmt_type) << "  " << real_stmt_usage[i].is_instrumented << endl;
-    }
 
     for (int i = 0; i < stmt_num; i++)
     {
         auto usage = real_stmt_usage[i].stmt_type;
         if (usage == OLD_INSTRUMENTATION_AFTER || usage == OLD_INSTRUMENTATION_BEFORE)
         {
-            cerr << "stmt_use[" << i << "].stmt_type = " << usage << endl;
+
+            for (int i = 0; i < stmt_num; i++)
+            {
+                cerr << i << "  " << real_tid_queue[i] << "  " << stmt_basic_type_to_string(real_stmt_usage[i].stmt_type) << "  " << real_stmt_usage[i].is_instrumented << endl;
+            }
+            cerr << RED << "stmt_use[" << i << "].stmt_type = " << usage << RESET << endl;
             throw runtime_error("stmt_use[i].stmt_type is forbidden type");
         }
     }
