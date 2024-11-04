@@ -250,7 +250,7 @@ int random_test(dbms_info &d_info)
 {
     random_device rd;
     auto rand_seed = rd();
-    rand_seed = 3201650297;
+    // rand_seed = 3201650297;
     cerr << "\n\n";
     cerr << "random seed for db: " << rand_seed << endl;
     smith::rng.seed(rand_seed);
