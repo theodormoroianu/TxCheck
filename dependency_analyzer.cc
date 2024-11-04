@@ -1138,12 +1138,6 @@ bool dependency_analyzer::check_any_transaction_cycle()
         }
         cerr << endl;
 
-        while (true)
-        {
-            // wait.
-            int x;
-            cin >> x;
-        }
         return true;
     }
     cerr << "done." << endl;
