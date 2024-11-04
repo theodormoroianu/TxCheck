@@ -1,5 +1,4 @@
 #include <dependency_analyzer.hh>
-#include <ranges>
 #include <functional>
 
 #define RESET "\033[0m"
@@ -1005,9 +1004,9 @@ bool dependency_analyzer::check_any_transaction_cycle()
     vector<set<pair<int, dependency_type>>> dsg(tid_num);
 
     // Add the dependency_graph edges to the DSG.
-    for (auto i : ranges::iota_view(0, tid_num))
+    for (int i = 0; i < tid_num; i++)
     {
-        for (auto j : ranges::iota_view(0, tid_num))
+        for (int j = 0; j < tid_num; j++)
         {
             // Ignore self-edges.
             if (i == j)
@@ -1037,9 +1036,9 @@ bool dependency_analyzer::check_any_transaction_cycle()
     }
 
     // Remove all START_DEPENDS and STRICT_START_DEPENDS.
-    for (auto i : ranges::iota_view(0, tid_num))
+    for (int i = 0; i < tid_num; i++)
     {
-        for (auto j : ranges::iota_view(0, tid_num))
+        for (int j = 0; j < tid_num; j++)
         {
             dsg[i].erase({j, START_DEPEND});
             dsg[i].erase({j, STRICT_START_DEPEND});
@@ -1111,7 +1110,7 @@ bool dependency_analyzer::check_any_transaction_cycle()
     };
 
     // Start a DFS from all nodes.
-    for (auto i : ranges::iota_view(0, tid_num))
+    for (int i = 0; i < tid_num; i++)
     {
         Dfs(i, -1, -1);
     }
@@ -1119,7 +1118,7 @@ bool dependency_analyzer::check_any_transaction_cycle()
     if (cycle_found)
     {
         cerr << "There are " << tid_num << " transactions." << endl;
-        for (auto i : ranges::iota_view(0, tid_num))
+        for (int i = 0; i < tid_num; i++)
         {
             cerr << "Transaction " << i << " has " << dsg[i].size() << " edges." << endl;
             for (auto &[neighbour, dep_type] : dsg[i])
@@ -1131,7 +1130,8 @@ bool dependency_analyzer::check_any_transaction_cycle()
         cerr << RED << "Cycle found in the dependency graph." << RESET << endl;
         cerr << "Cycle: ";
         cerr << "Txn " << cycle[0].first;
-        for (auto &node : cycle | ranges::views::reverse)
+        reverse(cycle.begin(), cycle.end());
+        for (auto &node : cycle)
         {
             cerr << " --> Txn " << node.first;
         }
