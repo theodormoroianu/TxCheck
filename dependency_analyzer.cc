@@ -1,5 +1,6 @@
 #include <dependency_analyzer.hh>
 #include <functional>
+#include <time.h>
 
 #define RESET "\033[0m"
 #define BLACK "\033[30m"            /* Black */
