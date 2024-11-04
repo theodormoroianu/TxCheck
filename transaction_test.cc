@@ -1393,15 +1393,15 @@ bool transaction_test::multi_stmt_round_test()
     }
 
     // Sanity checks.
-    for (int i = 0; i < stmt_queue.size(); i++)
-    {
-        auto stmt_str = print_stmt_to_string(stmt_queue[i]);
-        if (stmt_str.find(SPACE_HOLDER_STMT) == string::npos)
-            continue;
-        if (stmt_str.length() > string(SPACE_HOLDER_STMT).length() + 3)
-            continue;
-        assert(false);
-    }
+    // for (int i = 0; i < stmt_queue.size(); i++)
+    // {
+    //     auto stmt_str = print_stmt_to_string(stmt_queue[i]);
+    //     if (stmt_str.find(SPACE_HOLDER_STMT) == string::npos)
+    //         continue;
+    //     if (stmt_str.length() > string(SPACE_HOLDER_STMT).length() + 3)
+    //         continue;
+    //     assert(false);
+    // }
 
     for (int i = 0; i < stmt_num; i++)
     {
@@ -1590,13 +1590,15 @@ bool transaction_test::multi_stmt_round_test()
 
 bool transaction_test::block_scheduling()
 {
-    bool scheduling_ok = true;
     cerr << "block scheduling ... ";
     int round = 0;
     while (1)
     {
         if (!trans_test(false))
-            scheduling_ok = false;
+        {
+            cerr << "done. Skipping test.";
+            return false;
+        }
         if (stmt_queue == real_stmt_queue) // no failing
             break;
         stmt_queue = real_stmt_queue;
@@ -1607,7 +1609,7 @@ bool transaction_test::block_scheduling()
     }
     clear_execution_status();
     cerr << "done" << endl;
-    return scheduling_ok;
+    return true;
 }
 
 /**

@@ -769,7 +769,7 @@ void dut_mysql::reset(void)
 
 void dut_mysql::backup(void)
 {
-    string mysql_dump = "mysqldump -h 127.0.0.1 -P " + to_string(test_port) + " -u root " + test_db + " > /tmp/mysql_bk.sql";
+    string mysql_dump = "/usr/local/mysql/bin/mysqldump -h 127.0.0.1 -P " + to_string(test_port) + " -u root " + test_db + " > /tmp/mysql_bk.sql";
     int ret = system(mysql_dump.c_str());
     if (ret != 0)
     {
@@ -787,7 +787,7 @@ void dut_mysql::reset_to_backup(void)
 
     mysql_close(&mysql);
 
-    string mysql_source = "mysql -h 127.0.0.1 -P " + to_string(test_port) + " -u root -D " + test_db + " < /tmp/mysql_bk.sql";
+    string mysql_source = "/usr/local/mysql/bin/mysql -h 127.0.0.1 -P " + to_string(test_port) + " -u root -D " + test_db + " < /tmp/mysql_bk.sql";
     if (system(mysql_source.c_str()) == -1)
         throw std::runtime_error(string("system() error, return -1") + "\nLocation: " + debug_info);
 

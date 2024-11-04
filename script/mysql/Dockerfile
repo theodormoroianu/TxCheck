@@ -42,7 +42,7 @@ COPY TxCheck /home/mysql/TxCheck
 WORKDIR /home/mysql/TxCheck
 RUN autoreconf -if
 RUN ./configure
-RUN make clean; make -j
+RUN make clean; make -j8
 
 USER  root
 WORKDIR /home/mysql
