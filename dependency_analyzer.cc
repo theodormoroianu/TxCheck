@@ -1,9 +1,6 @@
 #include <dependency_analyzer.hh>
 #include <ranges>
 #include <functional>
-#include <print>
-
-using std::println;
 
 #define RESET "\033[0m"
 #define BLACK "\033[30m"            /* Black */
@@ -599,7 +596,7 @@ void dependency_analyzer::build_OW_dependency()
             }
             // Should be same transaction
             if (f_txn_id_queue[j] != i_tid)
-                throw std::runtime_error(format("Expected tid {} but found {}", i_tid, f_txn_id_queue[j]));
+                throw std::runtime_error("Expected tid " + to_string(i_tid) + " but found " + to_string(f_txn_id_queue[j]));
         }
         if (orginal_index == -1)
         {
@@ -1121,22 +1118,22 @@ bool dependency_analyzer::check_any_transaction_cycle()
 
     if (cycle_found)
     {
-        println("There are {} transactions.", tid_num);
+        cerr << "There are " << tid_num << " transactions." << endl;
         for (auto i : ranges::iota_view(0, tid_num))
         {
-            println("Transaction {} has {} edges.", i, dsg[i].size());
+            cerr << "Transaction " << i << " has " << dsg[i].size() << " edges." << endl;
             for (auto &[neighbour, dep_type] : dsg[i])
             {
-                println("    -> Transaction {} with dependency type {}", neighbour, (int)dep_type);
+                cerr << "    -> Transaction " << neighbour << " with dependency type " << (int)dep_type << endl;
             }
         }
 
         cerr << RED << "Cycle found in the dependency graph." << RESET << endl;
         cerr << "Cycle: ";
-        cerr << format("Txn {}", cycle[0].first);
+        cerr << "Txn " << cycle[0].first;
         for (auto &node : cycle | ranges::views::reverse)
         {
-            cerr << format(" --> Txn {}", node.first);
+            cerr << " --> Txn " << node.first;
         }
         cerr << endl;
 

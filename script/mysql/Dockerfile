@@ -21,7 +21,7 @@ USER  mysql
 WORKDIR /home/mysql/mysql_source/build
 # RUN cmake -DWITH_ASAN=ON -DWITH_ASAN_SCOPE=ON -DWITH_DEBUG=ON ../ -DDOWNLOAD_BOOST=1 -DWITH_BOOST=/home/mysql
 RUN cmake ../ -DDOWNLOAD_BOOST=1 -DWITH_BOOST=/home/mysql
-RUN make -j
+RUN make -j8
 
 # install mysql
 USER  root
@@ -37,8 +37,7 @@ RUN apt-get update
 RUN apt-get install -y build-essential autoconf autoconf-archive libpqxx-dev libboost-regex-dev libsqlite3-dev
 RUN apt-get install -y libmysqlclient-dev
 WORKDIR /home/mysql
-# RUN git clone https://github.com/JZuming/TxCheck
-COPY TxCheck /home/mysql/TxCheck
+RUN git clone https://github.com/theodormoroianu/TxCheck
 WORKDIR /home/mysql/TxCheck
 RUN autoreconf -if
 RUN ./configure
