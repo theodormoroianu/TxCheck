@@ -1141,7 +1141,8 @@ bool dependency_analyzer::check_any_transaction_cycle()
         while (true)
         {
             // wait.
-            sleep(1);
+            int x;
+            cin >> x;
         }
         return true;
     }
