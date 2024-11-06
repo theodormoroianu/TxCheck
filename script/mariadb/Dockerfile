@@ -9,10 +9,34 @@ RUN apt-get install -y vim cmake curl wget gdb
 # for mariadb
 RUN apt-get -y update
 RUN apt-get -y install software-properties-common devscripts equivs
-RUN apt-key adv --recv-keys --keyserver hkp://keyserver.ubuntu.com:80 0xF1656F24C74CD1D8
-RUN add-apt-repository --update --yes --enable-source 'deb [arch=amd64] http://nyc2.mirrors.digitalocean.com/mariadb/repo/10.3/ubuntu '$(lsb_release -sc)' main'
-RUN apt-get -y update
-RUN apt-get -y build-dep mariadb-10.3
+# Install dependencies.
+RUN apt-get update \
+    && apt-get install -y \
+        git \
+        gzip \
+        tar \
+        gcc \
+        g++ \
+        make \
+        bison \
+        libncurses5-dev \
+        zlib1g-dev \
+        libevent-dev \
+        cmake \
+        libgnutls28-dev \
+        libssl-dev \
+        libjemalloc-dev \
+        libsnappy-dev \
+        valgrind \
+        libcurl4-openssl-dev \
+        libxml2-dev \
+        libboost-all-dev \
+        libaio-dev \
+        libsystemd-dev \
+        libpcre2-dev \
+        ccache \
+    && apt-get clean
+
 
 # add user named mysql
 RUN useradd -ms /bin/bash mysql
@@ -28,7 +52,7 @@ RUN git submodule update --init --recursive
 RUN mkdir /home/mysql/mariadb/build
 WORKDIR /home/mysql/mariadb/build
 RUN cmake .. -DCMAKE_BUILD_TYPE=Debug
-RUN make -j
+RUN make -j8
 USER root
 RUN git config --global --add safe.directory /home/mysql/mariadb
 RUN make install
@@ -46,13 +70,14 @@ RUN apt-get update
 RUN apt-get install -y build-essential autoconf autoconf-archive libpqxx-dev libboost-regex-dev libsqlite3-dev
 WORKDIR /home/mysql
 # RUN git clone https://github.com/JZuming/TxCheck
-COPY TxCheck /home/mysql/TxCheck
+COPY . /home/mysql/TxCheck
+RUN ls -l /home/mysql/TxCheck
 WORKDIR /home/mysql/TxCheck
 RUN autoreconf -if
 # RUN ./configure
 run ./configure CXXFLAGS=-I/usr/local/mysql/include/
-RUN make clean; make -j
+RUN make clean; make -j8
 
 USER  root
 WORKDIR /home/mysql
-ENTRYPOINT bash
+ENTRYPOINT ["/home/mysql/TxCheck/transfuzz", "--mariadb-db=testdb", "--mariadb-port=3306", "--output-or-affect-num=0"]

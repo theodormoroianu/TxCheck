@@ -496,7 +496,7 @@ instrumentor::instrumentor(vector<shared_ptr<prod>> &stmt_queue,
                            vector<int> &tid_queue,
                            shared_ptr<schema> db_schema_) : db_schema(db_schema_)
 {
-    cerr << "instrumenting the statement ... ";
+    cerr << "instrumenting the statement ...      ";
     int stmt_num = stmt_queue.size();
     db_schema->fill_scope(used_scope);
 

@@ -1167,6 +1167,8 @@ dependency_analyzer::dependency_analyzer(vector<stmt_output> &init_output,
         cerr << "dependency_analyzer: total_output, final_tid_queue and final_stmt_usage size are not equal" << endl;
         throw runtime_error("dependency_analyzer: total_output, final_tid_queue and final_stmt_usage size are not equal");
     }
+
+    cerr << "Building dependency graph...      ";
     stmt_num = f_stmt_output.size();
 
     f_txn_status.push_back(TXN_COMMIT); // for init txn;
@@ -1225,30 +1227,6 @@ dependency_analyzer::dependency_analyzer(vector<stmt_output> &init_output,
         }
     }
 
-    cerr << "Checking if the pk, vk are all distinct (" << stmt_num << " statements)... ";
-    set<pair<int, int>> pk_vk_set;
-
-    for (int i = 0; i < stmt_num; i++)
-    {
-        // Ignore non-write
-        if (f_stmt_usage[i] != AFTER_WRITE_READ)
-            continue;
-
-        set<pair<int, int>> pkvk;
-        set<int> pk;
-        read_stmt_output_into_pk_and_version(i, pkvk, pk);
-        for (auto &p : pkvk)
-        {
-            if (pk_vk_set.contains(p))
-            {
-                cerr << "pk: " << p.first << " vk: " << p.second << " is not distinct" << endl;
-                throw runtime_error("pk, vk are not distinct");
-            }
-            pk_vk_set.insert(p);
-        }
-    }
-    cerr << "done." << endl;
-
     // first build instrument dependency, make sure that the instrument is correct
     build_stmt_instrument_dependency();
 
@@ -1304,6 +1282,32 @@ dependency_analyzer::dependency_analyzer(vector<stmt_output> &init_output,
     // {
     //     println("Transaction {} starts at stmt {} and ends at stmt {}.", txn, tid_begin_idx[txn], tid_end_idx[txn]);
     // }
+
+    cerr << "done." << endl;
+
+    cerr << "Checking if the pk, vk are all distinct (" << stmt_num << " statements)... ";
+    set<pair<int, int>> pk_vk_set;
+
+    for (int i = 0; i < stmt_num; i++)
+    {
+        // Ignore non-write
+        if (f_stmt_usage[i] != AFTER_WRITE_READ)
+            continue;
+
+        set<pair<int, int>> pkvk;
+        set<int> pk;
+        read_stmt_output_into_pk_and_version(i, pkvk, pk);
+        for (auto &p : pkvk)
+        {
+            if (pk_vk_set.contains(p))
+            {
+                cerr << "pk: " << p.first << " vk: " << p.second << " is not distinct" << endl;
+                throw runtime_error("pk, vk are not distinct");
+            }
+            pk_vk_set.insert(p);
+        }
+    }
+    cerr << "done." << endl;
 }
 
 dependency_analyzer::~dependency_analyzer()

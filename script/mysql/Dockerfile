@@ -1,4 +1,4 @@
-FROM ubuntu:20.04 
+FROM ubuntu:20.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get upgrade -y
@@ -21,7 +21,7 @@ USER  mysql
 WORKDIR /home/mysql/mysql_source/build
 # RUN cmake -DWITH_ASAN=ON -DWITH_ASAN_SCOPE=ON -DWITH_DEBUG=ON ../ -DDOWNLOAD_BOOST=1 -DWITH_BOOST=/home/mysql
 RUN cmake ../ -DDOWNLOAD_BOOST=1 -DWITH_BOOST=/home/mysql
-RUN make -j8
+RUN make -j6
 
 # install mysql
 USER  root
@@ -37,7 +37,9 @@ RUN apt-get update
 RUN apt-get install -y build-essential autoconf autoconf-archive libpqxx-dev libboost-regex-dev libsqlite3-dev
 RUN apt-get install -y libmysqlclient-dev
 WORKDIR /home/mysql
-RUN git clone https://github.com/theodormoroianu/TxCheck
+# RUN git clone https://github.com/theodormoroianu/TxCheck
+COPY . /home/mysql/TxCheck
+RUN ls -l /home/mysql/TxCheck
 WORKDIR /home/mysql/TxCheck
 RUN autoreconf -if
 RUN ./configure
@@ -45,4 +47,5 @@ RUN make clean; make -j8
 
 USER  root
 WORKDIR /home/mysql
-ENTRYPOINT bash
+# /home/mysql/TxCheck/transfuzz --mysql-db=testdb --mysql-port=3306 --output-or-affect-num=1
+ENTRYPOINT ["/home/mysql/TxCheck/transfuzz", "--mysql-db=testdb", "--mysql-port=3306", "--output-or-affect-num=1"]
