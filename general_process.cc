@@ -656,7 +656,8 @@ void save_current_testcase(vector<shared_ptr<prod>> &stmt_queue,
                            vector<stmt_usage> &usage_queue,
                            string stmt_file_name,
                            string tid_file_name,
-                           string usage_file_name)
+                           string usage_file_name,
+                           string with_conn = "")
 {
     // save stmt queue
     ofstream mimimized_stmt_output(stmt_file_name);
@@ -682,6 +683,109 @@ void save_current_testcase(vector<shared_ptr<prod>> &stmt_queue,
         minimized_usage_output << usage_queue[i] << endl;
     }
     minimized_usage_output.close();
+
+    if (with_conn != "")
+    {
+        ofstream minimized_conn_output(with_conn);
+
+        for (int i = 0; i < stmt_queue.size(); i++)
+        {
+            minimized_conn_output << "conn_" << tid_queue[i] << "> " << print_stmt_to_string(stmt_queue[i]) << endl;
+            mimimized_stmt_output << endl;
+        }
+
+        ofstream min_usage_readable(with_conn + "_usage_readable.txt");
+        for (int i = 0; i < usage_queue.size(); i++)
+        {
+            min_usage_readable << stmt_basic_type_to_string(usage_queue[i].stmt_type) << endl;
+        }
+    }
+
+    return;
+}
+
+void delete_txn_from_test(vector<shared_ptr<prod>> &stmt_queue,
+                          vector<int> &tid_queue,
+                          vector<stmt_usage> &usage_queue,
+                          int tid)
+{
+    // Count total nr of predicate matches.
+    int nr_matches = 0;
+    // Count nr of bpm and apm.
+    int nr_bpm = 0, nr_apm = 0;
+
+    for (auto i : usage_queue)
+    {
+        if (i == PREDICATE_MATCH)
+            nr_matches++;
+        if (i == BEFORE_PREDICATE_MATCH)
+            nr_bpm++;
+        if (i == AFTER_PREDICATE_MATCH)
+            nr_apm++;
+    }
+
+    assert(nr_bpm == nr_apm && nr_apm % nr_matches == 0);
+
+    set<int> predicate_match_positions;
+    for (int i = 0, poz = 0; i < (int)usage_queue.size(); i++)
+    {
+        if (usage_queue[i] == PREDICATE_MATCH)
+        {
+            if (tid_queue[i] == tid)
+                predicate_match_positions.insert(poz);
+            poz++;
+        }
+    }
+
+    // Eliminate the right BPM
+    for (int i = 0, nr_bpm = 0; i < (int)usage_queue.size(); i++)
+    {
+        if (usage_queue[i] == BEFORE_PREDICATE_MATCH)
+        {
+            if (predicate_match_positions.contains(nr_bpm))
+            {
+                stmt_queue.erase(stmt_queue.begin() + i);
+                tid_queue.erase(tid_queue.begin() + i);
+                usage_queue.erase(usage_queue.begin() + i);
+                i--;
+            }
+            nr_bpm = (nr_bpm + 1) % nr_matches;
+        }
+    }
+    // Eliminate the right APM
+    for (int i = 0, nr_apm = 0; i < (int)usage_queue.size(); i++)
+    {
+        if (usage_queue[i] == AFTER_PREDICATE_MATCH)
+        {
+            if (predicate_match_positions.contains(nr_apm))
+            {
+                stmt_queue.erase(stmt_queue.begin() + i);
+                tid_queue.erase(tid_queue.begin() + i);
+                usage_queue.erase(usage_queue.begin() + i);
+                i--;
+            }
+            nr_apm = (nr_apm + 1) % nr_matches;
+        }
+    }
+
+    for (int i = 0; i < tid_queue.size(); i++)
+    {
+        if (tid_queue[i] != tid)
+            continue;
+
+        stmt_queue.erase(stmt_queue.begin() + i);
+        tid_queue.erase(tid_queue.begin() + i);
+        usage_queue.erase(usage_queue.begin() + i);
+        i--;
+    }
+
+    for (int i = 0; i < tid_queue.size(); i++)
+    {
+        if (tid_queue[i] < tid)
+            continue;
+
+        tid_queue[i]--;
+    }
 
     return;
 }
@@ -722,26 +826,7 @@ bool minimize_testcase(dbms_info &d_info,
         vector<int> tmp_tid_queue = final_tid_queue;
         vector<stmt_usage> tmp_usage_queue = final_usage_queue;
 
-        // delete current tid
-        for (int i = 0; i < tmp_tid_queue.size(); i++)
-        {
-            if (tmp_tid_queue[i] != tid)
-                continue;
-
-            tmp_stmt_queue.erase(tmp_stmt_queue.begin() + i);
-            tmp_tid_queue.erase(tmp_tid_queue.begin() + i);
-            tmp_usage_queue.erase(tmp_usage_queue.begin() + i);
-            i--;
-        }
-
-        // adjust tid queue
-        for (int i = 0; i < tmp_tid_queue.size(); i++)
-        {
-            if (tmp_tid_queue[i] < tid)
-                continue;
-
-            tmp_tid_queue[i]--;
-        }
+        delete_txn_from_test(tmp_stmt_queue, tmp_tid_queue, tmp_usage_queue, tid);
 
         int try_time = 1;
         bool trigger_bug = false;
@@ -761,11 +846,11 @@ bool minimize_testcase(dbms_info &d_info,
         cerr << "Succeed to delete txn " << tid << "\n\n\n"
              << endl;
 
-        int pause;
-        cerr << "Enter an integer: 0 skip, other save" << endl;
-        cin >> pause;
-        if (pause == 0)
-            continue;
+        // int pause;
+        // cerr << "Enter an integer: 0 skip, other save" << endl;
+        // cin >> pause;
+        // if (pause == 0)
+        //     continue;
 
         final_stmt_queue = tmp_stmt_queue;
         final_tid_queue = tmp_tid_queue;
@@ -832,6 +917,83 @@ bool minimize_testcase(dbms_info &d_info,
             i--;
         }
 
+        // Delete predicate match, before predicate match and after predicate match.
+        if (i >= 0 && tmp_usage_queue[i] == PREDICATE_MATCH)
+        {
+            int nr_predicates = 0;
+            for (auto us : tmp_usage_queue)
+                if (us == PREDICATE_MATCH)
+                    nr_predicates++;
+            int smaller_predicates = 0;
+            for (int j = 0; j < i; j++)
+                if (tmp_usage_queue[j] == PREDICATE_MATCH)
+                    smaller_predicates++;
+
+            // Eliminate the right BPM
+            for (int poz = 0, nr_bpm = 0; poz < (int)tmp_usage_queue.size(); poz++)
+            {
+                if (tmp_usage_queue[poz] == BEFORE_PREDICATE_MATCH)
+                {
+                    if (nr_bpm == smaller_predicates)
+                    {
+                        tmp_stmt_queue.erase(tmp_stmt_queue.begin() + poz);
+                        tmp_tid_queue.erase(tmp_tid_queue.begin() + poz);
+                        tmp_usage_queue.erase(tmp_usage_queue.begin() + poz);
+                        tmp_stmt_num--;
+                        if (poz < i)
+                            i--;
+                        poz--;
+                    }
+                    nr_bpm = (nr_bpm + 1) % nr_predicates;
+                }
+            }
+            // Eliminate the right APM
+            for (int poz = 0, nr_apm = 0; poz < (int)tmp_usage_queue.size(); poz++)
+            {
+                if (tmp_usage_queue[poz] == AFTER_PREDICATE_MATCH)
+                {
+                    if (nr_apm == smaller_predicates)
+                    {
+                        tmp_stmt_queue.erase(tmp_stmt_queue.begin() + poz);
+                        tmp_tid_queue.erase(tmp_tid_queue.begin() + poz);
+                        tmp_usage_queue.erase(tmp_usage_queue.begin() + poz);
+                        tmp_stmt_num--;
+                        if (poz < i)
+                            i--;
+                        poz--;
+                    }
+                    nr_apm = (nr_apm + 1) % nr_predicates;
+                }
+            }
+
+            if (i >= (int)tmp_usage_queue.size() || tmp_usage_queue[i] != PREDICATE_MATCH)
+                cerr << "Error: i = " << i << ", size = " << tmp_usage_queue.size() << endl;
+            assert(tmp_usage_queue[i] == PREDICATE_MATCH);
+            tmp_stmt_queue.erase(tmp_stmt_queue.begin() + i);
+            tmp_tid_queue.erase(tmp_tid_queue.begin() + i);
+            tmp_usage_queue.erase(tmp_usage_queue.begin() + i);
+            tmp_stmt_num--;
+            i--;
+        }
+
+        // Delete all BEFORE_PREDICATE_MATCH and AFTER_PREDICATE_MATCH
+        while (i >= 0 && tmp_usage_queue[i] == BEFORE_PREDICATE_MATCH)
+        {
+            tmp_stmt_queue.erase(tmp_stmt_queue.begin() + i);
+            tmp_tid_queue.erase(tmp_tid_queue.begin() + i);
+            tmp_usage_queue.erase(tmp_usage_queue.begin() + i);
+            tmp_stmt_num--;
+            i--;
+        }
+        i++;
+        while (i < (int)tmp_stmt_queue.size() && tmp_usage_queue[i] == AFTER_PREDICATE_MATCH)
+        {
+            tmp_stmt_queue.erase(tmp_stmt_queue.begin() + i);
+            tmp_tid_queue.erase(tmp_tid_queue.begin() + i);
+            tmp_usage_queue.erase(tmp_usage_queue.begin() + i);
+            tmp_stmt_num--;
+        }
+
         int try_time = 1;
         bool trigger_bug = false;
         while (try_time--)
@@ -850,14 +1012,14 @@ bool minimize_testcase(dbms_info &d_info,
         cerr << "Succeed to delete stmt " << "\n\n\n"
              << endl;
 
-        int pause;
-        cerr << "Enter an integer: 0 skip, other save" << endl;
-        cin >> pause;
-        if (pause == 0)
-        {
-            i = original_i;
-            continue;
-        }
+        // int pause;
+        // cerr << "Enter an integer: 0 skip, other save" << endl;
+        // cin >> pause;
+        // if (pause == 0)
+        // {
+        //     i = original_i;
+        //     continue;
+        // }
 
         final_stmt_queue = tmp_stmt_queue;
         final_tid_queue = tmp_tid_queue;
@@ -875,7 +1037,7 @@ bool minimize_testcase(dbms_info &d_info,
     usage_queue = final_usage_queue;
 
     save_current_testcase(stmt_queue, tid_queue, usage_queue,
-                          "min_stmts.sql", "min_tid.txt", "min_usage.txt");
+                          "min_stmts.sql", "min_tid.txt", "min_usage.txt", "with_conn.sql");
 
     return true;
 }
@@ -953,31 +1115,7 @@ bool reproduce_routine(dbms_info &d_info,
             err_info = bug_str;
             return true;
         }
-        set<stmt_id> empty_deleted_nodes;
-        bool delete_flag = false;
-        auto longest_stmt_path = tmp_da->topological_sort_path(empty_deleted_nodes, &delete_flag);
-        if (delete_flag == true)
-        {
-            cerr << "the test case contains cycle and cannot be properly sorted" << endl;
-            return false;
-        }
-        cerr << RED << "stmt path for normal test: " << RESET;
-        print_stmt_path(longest_stmt_path, tmp_da->stmt_dependency_graph);
-
-        re_test.normal_stmt_test(longest_stmt_path);
-        if (re_test.check_normal_stmt_result(longest_stmt_path, false) == false)
-        {
-            string bug_str = "Find bugs in check_normal_stmt_result";
-            cerr << RED << bug_str << RESET << endl;
-            if (err_info != "" && err_info != bug_str)
-            {
-                cerr << "not same as the original bug" << endl;
-                return false;
-            }
-            err_info = bug_str;
-            return true;
-        }
-        // */
+        return false;
     }
     catch (exception &e)
     {

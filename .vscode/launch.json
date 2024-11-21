@@ -26,7 +26,6 @@
             ]
         },
         {
-            
             "name": "transfuzz",
             "type": "cppdbg",
             "request": "launch",
@@ -35,6 +34,38 @@
                 "--mysql-db=testdb",
                 "--mysql-port=3306",
                 "--output-or-affect-num=1"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "mini debug",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/transfuzz",
+            "args": [
+                "--mysql-db=testdb",
+                "--mysql-port=3306",
+                "--reproduce-sql=found_bugs/bug_0_trans/min_stmts.sql",
+                "--reproduce-tid=found_bugs/bug_0_trans/min_tid.txt",
+                "--reproduce-usage=found_bugs/bug_0_trans/min_usage.txt",
+                "--reproduce-backup=found_bugs/bug_0_trans/mysql_bk.sql",
+                "--min"
             ],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",

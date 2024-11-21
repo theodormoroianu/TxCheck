@@ -117,6 +117,8 @@ void dependency_analyzer::build_directly_read_dependency(vector<operate_unit> &o
         if (op_list[i].hash != target_op.hash)
             continue;
 
+        if (find_the_write)
+            throw runtime_error("BUG: find more than one write");
         find_the_write = true;
 
         if (op_list[i].stmt_idx >= 0 && target_op.stmt_idx >= 0) // stmts in same transaction should build dependency
@@ -1071,7 +1073,7 @@ bool dependency_analyzer::check_any_transaction_cycle()
     //     }
     // }
 
-    cerr << "Checking for cycles in the dependency graph... ";
+    cerr << "Checking for cycles in the dependency graph...              ";
     function<void(int, int, int)> Dfs = [&](int node, int parent, int type)
     {
         if (cycle_found)
@@ -1168,7 +1170,7 @@ dependency_analyzer::dependency_analyzer(vector<stmt_output> &init_output,
         throw runtime_error("dependency_analyzer: total_output, final_tid_queue and final_stmt_usage size are not equal");
     }
 
-    cerr << "Building dependency graph...      ";
+    cerr << "Building dependency graph...          ";
     stmt_num = f_stmt_output.size();
 
     f_txn_status.push_back(TXN_COMMIT); // for init txn;
@@ -1283,7 +1285,7 @@ dependency_analyzer::dependency_analyzer(vector<stmt_output> &init_output,
     //     println("Transaction {} starts at stmt {} and ends at stmt {}.", txn, tid_begin_idx[txn], tid_end_idx[txn]);
     // }
 
-    cerr << "done." << endl;
+    cerr << "done" << endl;
 
     cerr << "Checking if the pk, vk are all distinct (" << stmt_num << " statements)... ";
     set<pair<int, int>> pk_vk_set;
@@ -1646,6 +1648,8 @@ bool dependency_analyzer::check_GSIa()
     {
         for (int j = 0; j < tid_num; j++)
         {
+            if (i == j)
+                continue;
             // check whether they have ww or wr dependency
             if (dependency_graph[i][j].count(WRITE_WRITE) == 0 &&
                 dependency_graph[i][j].count(WRITE_READ) == 0)
@@ -1654,8 +1658,38 @@ bool dependency_analyzer::check_GSIa()
             // check whether they have start dependency
             if (dependency_graph[i][j].count(START_DEPEND) == 0)
             {
-                cerr << "txn i: " << i << endl;
+                cerr << "\n"
+                     << "txn i: " << i << endl;
                 cerr << "txn j: " << j << endl;
+                cerr << "Contains WW: " << dependency_graph[i][j].count(WRITE_WRITE) << endl;
+                cerr << "Contains WR: " << dependency_graph[i][j].count(WRITE_READ) << endl;
+
+                // Try to find where this is coming from.
+                for (int k = 0; k < stmt_num; k++)
+                {
+                    if (f_txn_id_queue[k] != i)
+                        continue;
+                    for (int l = 0; l < stmt_num; l++)
+                    {
+                        if (f_txn_id_queue[l] != j)
+                            continue;
+
+                        // Try to find the dependency.
+                        auto it = stmt_dependency_graph.find({stmt_id(f_txn_id_queue, k), stmt_id(f_txn_id_queue, l)});
+                        if (it != stmt_dependency_graph.end())
+                        {
+                            for (auto &dep : it->second)
+                            {
+                                if (dep == WRITE_READ || dep == WRITE_WRITE)
+                                {
+                                    cerr << "\n\nStmt a: Nr. " << k << ", type: " << stmt_basic_type_to_string(f_stmt_usage[k].stmt_type) << endl;
+                                    cerr << "Stmt b: Nr. " << l << ", type: " << stmt_basic_type_to_string(f_stmt_usage[l].stmt_type) << endl;
+                                    cerr << "Dependency a -> b: " << dep << endl;
+                                }
+                            }
+                        }
+                    }
+                }
                 return true;
             }
         }

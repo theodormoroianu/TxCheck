@@ -1,12 +1,10 @@
-import os, time
+#! /bin/env python3
+import os, time, signal, argparse
 
 IMAGES = [
     "txcheck-my-sql-container",
     "txcheck-mariadb-container"
 ]
-
-IMAGE_NAME = IMAGES[1]
-NR_INSTANCES = 4
 
 def get_container_name(nr):
     return f"{IMAGE_NAME}-{nr}"
@@ -45,8 +43,30 @@ def watch():
             print(str(bug).ljust(6).rjust(9), end="")
         print("")
 
-print("Killing all containers...")
-os.system("docker kill $(docker ps -q)")
+# Capture ctrl+c to kill all containers.
+def signal_handler(sig, frame):
+    print("\n\nKilling all containers...")
+    os.system("docker kill $(docker ps -q)")
+    exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("command", help="Build or run", type=str, choices=["build", "run"])
+parser.add_argument("image", help="Image name", type=str, choices=["mysql", "mariadb"])
+parser.add_argument("--instances", help="Number of instances", type=int, default=4, required=False)
+
+args = parser.parse_args()
+
+IMAGE_NAME = IMAGES[0] if args.image == "mysql" else IMAGES[1]
+NR_INSTANCES = args.instances
+
+if args.command == "build":
+    assert os.path.exists(f"script/{args.image}/Dockerfile"), "Dockerfile not found"
+    os.system(f"docker build -t {IMAGE_NAME} -f script/{args.image}/Dockerfile .")
+    exit(0)
+
 
 print("\n\nStarting instances...")
 start_instances()

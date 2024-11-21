@@ -72,7 +72,7 @@ void transaction_test::assign_txn_status()
  */
 void transaction_test::gen_txn_stmts()
 {
-    cerr << "generating statements ... ";
+    cerr << "generating statements ...             ";
     int stmt_pos_of_trans[trans_num];
 
     // Schema of the current database state.
@@ -231,7 +231,7 @@ bool transaction_test::analyze_txn_dependency(shared_ptr<dependency_analyzer> &d
                                           1,                   // primary_key_idx
                                           0);                  // write_op_key_idx
 
-    cerr << "check transaction dependency ... ";
+    cerr << "check transaction dependency ...      ";
     if (da->check_G1a() == true)
     {
         cerr << "check_G1a violate!!" << endl;
@@ -247,15 +247,18 @@ bool transaction_test::analyze_txn_dependency(shared_ptr<dependency_analyzer> &d
         cerr << "check_G1c violate!!" << endl;
         return true;
     }
-    // if (da->check_G2_item() == true){
-    //     cerr << "check_G2_item violate!!" << endl;
-    //     return true;
-    // }
-    // if (da->check_GSIa() == true){
+    if (da->check_G2_item() == true)
+    {
+        cerr << "check_G2_item violate!!" << endl;
+        return true;
+    }
+    // if (da->check_GSIa() == true)
+    // {
     //     cerr << "check_GSIa violate!!" << endl;
     //     return true;
     // }
-    // if (da->check_GSIb() == true){
+    // if (da->check_GSIb() == true)
+    // {
     //     cerr << "check_GSIb violate!!" << endl;
     //     return true;
     // }
@@ -1210,7 +1213,7 @@ bool transaction_test::remove_separated_and_invalid_blocks()
      * by construction that all statements are used:
      * if no schedule is found, then the testcase is rejected.
      */
-    cerr << "removing separated blocks ... ";
+    cerr << "removing separated blocks ...         ";
     stmt_queue = real_stmt_queue;
     tid_queue = real_tid_queue;
     stmt_use = real_stmt_usage;
@@ -1590,7 +1593,7 @@ bool transaction_test::multi_stmt_round_test()
 
 bool transaction_test::block_scheduling()
 {
-    cerr << "block scheduling ... ";
+    cerr << "block scheduling ...                  ";
     int round = 0;
     while (1)
     {

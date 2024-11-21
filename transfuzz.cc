@@ -170,8 +170,11 @@ int fork_for_transaction_test(dbms_info &d_info)
 
     transaction_test::fork_if_server_closed(d_info);
 
-    // TODO
+#ifndef DEBUG
     child_pid = fork();
+#else
+    child_pid = 0;
+#endif
     if (child_pid == 0)
     { // in child process
         try
@@ -250,7 +253,9 @@ int random_test(dbms_info &d_info)
 {
     random_device rd;
     auto rand_seed = rd();
-    // rand_seed = 3201650297;
+#ifdef DEBUG
+    rand_seed = 2372943907;
+#endif
     cerr << "\n\n";
     cerr << "random seed for db: " << rand_seed << endl;
     smith::rng.seed(rand_seed);
@@ -286,7 +291,9 @@ int random_test(dbms_info &d_info)
     {
         // each round, generate random seed again, otherwise it will perform the same tests
         rand_seed = rd();
-        // rand_seed = 589573350; // 3612474293;
+#ifdef DEBUG
+        rand_seed = 1391300098;
+#endif
         cerr << "\n\n";
         cerr << "random seed for tests: " << rand_seed << endl;
         smith::rng.seed(rand_seed);
@@ -464,37 +471,9 @@ reproduce-sql|reproduce-tid|reproduce-usage|reproduce-backup)(?:=((?:.|\n)*))?")
         int use;
         while (stmt_usage_file >> use)
         {
-            switch (use)
-            {
-            case 0:
-                stmt_usage_queue.push_back(stmt_usage(INIT_TYPE, false, "t_***"));
-                break;
-            case 1:
-                stmt_usage_queue.push_back(stmt_usage(SELECT_READ, false, "t_***"));
-                break;
-            case 2:
-                stmt_usage_queue.push_back(stmt_usage(UPDATE_WRITE, false, "t_***"));
-                break;
-            case 3:
-                stmt_usage_queue.push_back(stmt_usage(INSERT_WRITE, false, "t_***"));
-                break;
-            case 4:
-                stmt_usage_queue.push_back(stmt_usage(DELETE_WRITE, false, "t_***"));
-                break;
-            case 5:
-                stmt_usage_queue.push_back(stmt_usage(BEFORE_WRITE_READ, true, "t_***"));
-                break;
-            case 6:
-                stmt_usage_queue.push_back(stmt_usage(AFTER_WRITE_READ, true, "t_***"));
-                break;
-            case 7:
-                stmt_usage_queue.push_back(stmt_usage(VERSION_SET_READ, true, "t_***"));
-                break;
-            default:
-                cerr << "unknown stmt usage: " << use << endl;
-                exit(-1);
-                break;
-            }
+            stmt_basic_type type = static_cast<stmt_basic_type>(use);
+            auto is_instrumented = stmt_basic_type_is_instrumentation(type);
+            stmt_usage_queue.push_back(stmt_usage(type, is_instrumented, "t_***"));
         }
         stmt_usage_file.close();
 
