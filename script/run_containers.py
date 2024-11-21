@@ -6,6 +6,11 @@ IMAGES = [
     "txcheck-mariadb-container"
 ]
 
+def run_command(command, show_log=False):
+    if show_log:
+        print(f"Running {command}")
+    os.system(command)
+
 def get_container_name(nr):
     return f"{IMAGE_NAME}-{nr}"
 
@@ -17,11 +22,27 @@ def container_has_bugs(container_name):
     has_bugs = os.popen(f"docker exec {container_name} ls found_bugs").read()
     return bool(has_bugs)
 
+
 def start_instances():
+    # if the "all_found_bugs" folder exists, move it to "all_found_bugs_old".
+    if os.path.exists("all_found_bugs"):
+        run_command("mkdir all_found_bugs_old -p", show_log=True)
+        for file in os.listdir("all_found_bugs"):
+            for bug in os.listdir(f"all_found_bugs/{file}"):
+                run_command(f"mv all_found_bugs/{file}/{bug} all_found_bugs_old", show_log=True)
+        run_command("rm -r all_found_bugs", show_log=True)
+
+    run_command("mkdir all_found_bugs", show_log=True)
+
+    working_dir = os.getcwd()
+
     # Start the 10 instances.
     for i in range(NR_INSTANCES):
-        command = f"docker run -itd --replace --rm --name {get_container_name(i)} {IMAGE_NAME}"
-        os.system(command)
+        folder_name = f"all_found_bugs/{get_container_name(i)}"
+        run_command(f"mkdir {folder_name}", show_log=True)
+        run_command(
+            f"docker run -itd --replace --rm -v {working_dir}/{folder_name}:/home/mysql/found_bugs:z --name {get_container_name(i)} {IMAGE_NAME}", True)
+        
 
 def watch():
     start_time = time.time()
@@ -64,11 +85,12 @@ NR_INSTANCES = args.instances
 
 if args.command == "build":
     assert os.path.exists(f"script/{args.image}/Dockerfile"), "Dockerfile not found"
-    os.system(f"docker build -t {IMAGE_NAME} -f script/{args.image}/Dockerfile .")
+    command = f"docker build -t {IMAGE_NAME} -f script/{args.image}/Dockerfile ."
+    os.system(f"Running {command}")
     exit(0)
 
 
-print("\n\nStarting instances...")
+print("Starting instances...")
 start_instances()
 
 time.sleep(10)
