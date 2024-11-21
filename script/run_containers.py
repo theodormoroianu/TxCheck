@@ -86,7 +86,7 @@ NR_INSTANCES = args.instances
 if args.command == "build":
     assert os.path.exists(f"script/{args.image}/Dockerfile"), "Dockerfile not found"
     command = f"docker build -t {IMAGE_NAME} -f script/{args.image}/Dockerfile ."
-    os.system(f"Running {command}")
+    run_command(command, show_log=True)
     exit(0)
 
 
