@@ -6,6 +6,9 @@ IMAGES = [
     "txcheck-mariadb-container"
 ]
 
+REGISTRY = "theodormoroianu/dbms"
+
+
 def run_command(command, show_log=False):
     if show_log:
         print(f"Running {command}")
@@ -74,7 +77,7 @@ signal.signal(signal.SIGINT, signal_handler)
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("command", help="Build or run", type=str, choices=["build", "run"])
+parser.add_argument("command", help="Build, run, push or pull", type=str, choices=["build", "run", "push", "pull"])
 parser.add_argument("image", help="Image name", type=str, choices=["mysql", "mariadb"])
 parser.add_argument("--instances", help="Number of instances", type=int, default=4, required=False)
 
@@ -89,6 +92,21 @@ if args.command == "build":
     run_command(command, show_log=True)
     exit(0)
 
+if args.command == "push":
+    full_image_name = f"{REGISTRY}:{IMAGE_NAME}"
+    command = f"docker tag {IMAGE_NAME} {full_image_name}"
+    run_command(command, show_log=True)
+
+    command = f"docker push {full_image_name}"
+    run_command(command, show_log=True)
+    exit(0)
+
+if args.command == "pull":
+    full_image_name = f"{REGISTRY}:{IMAGE_NAME}"
+    command = f"docker pull {full_image_name}"
+    run_command(command, show_log=True)
+    command = f"docker tag {full_image_name} {IMAGE_NAME}"
+    run_command(command, show_log=True)
 
 print("Starting instances...")
 start_instances()

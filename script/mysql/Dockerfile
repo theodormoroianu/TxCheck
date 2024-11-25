@@ -1,51 +1,41 @@
+# Use the official Ubuntu image as the base image
 FROM ubuntu:20.04
+
+# Set environment variables for MySQL
+ENV MYSQL_ROOT_PASSWORD=root
+ENV MYSQL_DATABASE=testdb
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get upgrade -y
-RUN apt-get install -y apt-utils
-RUN apt-get install -y build-essential python3-dev automake git flex bison libglib2.0-dev libpixman-1-dev python3-setuptools
-RUN apt-get install -y vim cmake curl wget gdb
+# Install necessary dependencies for MySQL and TxCheck
+RUN apt-get update && apt-get install -y \
+    mysql-server \
+    build-essential \
+    autoconf \
+    autoconf-archive \
+    libpqxx-dev \
+    libboost-regex-dev \
+    libsqlite3-dev \
+    libmysqlclient-dev \
+    git
 
-# install mysql
-RUN apt-get install -y libssl-dev libncurses5-dev
-RUN useradd -ms /bin/bash mysql
-USER  mysql
+# Initialize the MySQL data directory
+RUN rm /var/lib/mysql/ -r
+RUN mysqld --initialize-insecure --user=mysql
+
+# Set the working directory
 WORKDIR /home/mysql
-RUN wget https://github.com/mysql/mysql-server/archive/refs/tags/mysql-8.0.28.tar.gz
-RUN tar -zxf mysql-8.0.28.tar.gz
-RUN mv mysql-server-mysql-8.0.28 mysql_source/
-WORKDIR /home/mysql/mysql_source
-RUN mkdir build
-# build mysql
-USER  mysql
-WORKDIR /home/mysql/mysql_source/build
-# RUN cmake -DWITH_ASAN=ON -DWITH_ASAN_SCOPE=ON -DWITH_DEBUG=ON ../ -DDOWNLOAD_BOOST=1 -DWITH_BOOST=/home/mysql
-RUN cmake ../ -DDOWNLOAD_BOOST=1 -DWITH_BOOST=/home/mysql
-RUN make -j6
+USER root
 
-# install mysql
-USER  root
-RUN make install
-RUN chown -R mysql:mysql /usr/local/mysql/
-USER  mysql
-WORKDIR /usr/local/mysql/
-RUN ./bin/mysqld --initialize-insecure --thread_stack=512k
-
-# get TxCheck
-USER  root
-RUN apt-get update
-RUN apt-get install -y build-essential autoconf autoconf-archive libpqxx-dev libboost-regex-dev libsqlite3-dev
-RUN apt-get install -y libmysqlclient-dev
-WORKDIR /home/mysql
-# RUN git clone https://github.com/theodormoroianu/TxCheck
+# Copy TxCheck source code into the container
 COPY . /home/mysql/TxCheck
-RUN ls -l /home/mysql/TxCheck
-WORKDIR /home/mysql/TxCheck
-RUN autoreconf -if
-RUN ./configure
-RUN make clean; make -j8
 
-USER  root
-WORKDIR /home/mysql
-# /home/mysql/TxCheck/transfuzz --mysql-db=testdb --mysql-port=3306 --output-or-affect-num=1
+# Build and install TxCheck
+RUN autoreconf -if /home/mysql/TxCheck && \
+    cd /home/mysql/TxCheck && \
+    ./configure && \
+    make clean && \
+    make -j
+
+
+# Set the entrypoint to run TxCheck
 ENTRYPOINT ["/home/mysql/TxCheck/transfuzz", "--mysql-db=testdb", "--mysql-port=3306", "--output-or-affect-num=1"]

@@ -769,7 +769,7 @@ void dut_mysql::reset(void)
 
 void dut_mysql::backup(void)
 {
-    string mysql_dump = "/usr/local/mysql/bin/mysqldump -h 127.0.0.1 -P " + to_string(test_port) + " -u root " + test_db + " > /tmp/mysql_bk.sql";
+    string mysql_dump = "/usr/bin/mysqldump -h 127.0.0.1 -P " + to_string(test_port) + " -u root " + test_db + " > /tmp/mysql_bk.sql";
     int ret = system(mysql_dump.c_str());
     if (ret != 0)
     {
@@ -787,7 +787,7 @@ void dut_mysql::reset_to_backup(void)
 
     mysql_close(&mysql);
 
-    string mysql_source = "/usr/local/mysql/bin/mysql -h 127.0.0.1 -P " + to_string(test_port) + " -u root -D " + test_db + " < /tmp/mysql_bk.sql";
+    string mysql_source = "/usr/bin/mysql -h 127.0.0.1 -P " + to_string(test_port) + " -u root -D " + test_db + " < /tmp/mysql_bk.sql";
     if (system(mysql_source.c_str()) == -1)
         throw std::runtime_error(string("system() error, return -1") + "\nLocation: " + debug_info);
 
@@ -872,14 +872,14 @@ pid_t dut_mysql::fork_db_server()
 
     if (child == 0)
     {
-        char *server_argv[128];
-        int i = 0;
-        server_argv[i++] = (char *)"/usr/local/mysql/bin/mysqld"; // path of tiup
-        server_argv[i++] = (char *)"--basedir=/usr/local/mysql";
-        server_argv[i++] = (char *)"--datadir=/usr/local/mysql/data";
-        server_argv[i++] = (char *)"--plugin-dir=/usr/local/mysql/lib/plugin";
-        server_argv[i++] = (char *)"--user=mysql";
-        server_argv[i++] = NULL;
+        char *server_argv[] = {
+            (char *)"/usr/sbin/mysqld", // Adjust the path if necessary
+            // (char *)"--basedir=/usr",                     // Base directory for MySQL
+            // (char *)"--datadir=/var/lib/mysql",           // Data directory for MySQL
+            // (char *)"--plugin-dir=/usr/lib/mysql/plugin", // Plugin directory
+            (char *)"--user=mysql", // User to run the server
+            NULL                    // Terminate the array
+        };
         execv(server_argv[0], server_argv);
         cerr << "fork mysql server fail \nLocation: " + debug_info << endl;
     }
