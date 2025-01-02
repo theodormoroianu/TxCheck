@@ -107,6 +107,7 @@ if args.command == "pull":
     run_command(command, show_log=True)
     command = f"docker tag {full_image_name} {IMAGE_NAME}"
     run_command(command, show_log=True)
+    exit(0)
 
 print("Starting instances...")
 start_instances()

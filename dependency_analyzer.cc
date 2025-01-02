@@ -1001,7 +1001,7 @@ void dependency_analyzer::print_dependency_graph()
     }
 }
 
-bool dependency_analyzer::check_any_transaction_cycle()
+bool dependency_analyzer::check_any_transaction_cycle(bool ignore_overwrites)
 {
     // stores the edges of the DSG.
     vector<set<pair<int, dependency_type>>> dsg(tid_num);
@@ -1045,6 +1045,8 @@ bool dependency_analyzer::check_any_transaction_cycle()
         {
             dsg[i].erase({j, START_DEPEND});
             dsg[i].erase({j, STRICT_START_DEPEND});
+            if (ignore_overwrites)
+                dsg[i].erase({j, OVERWRITE_DEPEND});
         }
     }
 

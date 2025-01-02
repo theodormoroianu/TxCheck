@@ -539,7 +539,7 @@ dut_mariadb::dut_mariadb(string db, unsigned int port)
     query_status = 0;
     txn_abort = false;
     thread_id = mysql_thread_id(&mysql);
-    block_test("SET SESSION TRANSACTION ISOLATION LEVEL SERIALIZABLE;");
+    block_test("SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ;");
 }
 
 static unsigned long long get_cur_time_ms(void)
@@ -776,7 +776,7 @@ void dut_mariadb::reset(void)
 
 void dut_mariadb::backup(void)
 {
-    string mysql_dump = "/usr/local/mysql/bin/mysqldump -u root " + test_db + " > /tmp/mysql_bk.sql";
+    string mysql_dump = "mysqldump -u root " + test_db + " > /tmp/mysql_bk.sql";
     int ret = system(mysql_dump.c_str());
     if (ret != 0)
     {
@@ -794,7 +794,7 @@ void dut_mariadb::reset_to_backup(void)
 
     mysql_close(&mysql);
 
-    string mysql_source = "/usr/local/mysql/bin/mysql -u root -D " + test_db + " < /tmp/mysql_bk.sql";
+    string mysql_source = "mysql -u root -D " + test_db + " < /tmp/mysql_bk.sql";
     if (system(mysql_source.c_str()) == -1)
         throw std::runtime_error(string("system() error, return -1") + "\nLocation: " + debug_info);
 
@@ -895,11 +895,8 @@ pid_t dut_mariadb::fork_db_server()
     {
         char *server_argv[128];
         int i = 0;
-        server_argv[i++] = (char *)"/usr/local/mysql/bin/mysqld"; // path of tiup
-        server_argv[i++] = (char *)"--basedir=/usr/local/mysql";
-        server_argv[i++] = (char *)"--datadir=/usr/local/mysql/data";
-        server_argv[i++] = (char *)"--plugin-dir=/usr/local/mysql/lib/plugin";
-        server_argv[i++] = (char *)"--user=mysql";
+        server_argv[i++] = (char *)"/usr/bin/mysqld_safe"; // path to mysqld_safe
+        server_argv[i++] = (char *)"--datadir=/var/lib/mysql";
         server_argv[i++] = NULL;
         execv(server_argv[0], server_argv);
         cerr << "fork mysql server fail \nLocation: " + debug_info << endl;

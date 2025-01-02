@@ -1,4 +1,54 @@
-# TxCheck
+# Sound TxCheck
+
+## Description
+
+This project is a modification of the `TxCheck` fuzzing tool, which includes a sound DSG extraction method.
+
+A description of what the modifications to this tool try to accomplish can be found in my thesis report, which is available [here](https://github.com/theodormoroianu/MasterThesisReport/blob/master/thesis.pdf).
+
+## Build
+
+The build process is the same as the original `TxCheck` tool. The instructions for building the tool can be found in the original README file, which is included below.
+
+However, due to the slow compilation time of DBMS systems, I opted to update the dockerfiles to include precompiled versions of the DBMS systems. The scripts for building mysql (the only one I tested the latest version of) can be found in the `script` directory.
+
+Finding the exact shared libraries to link against can be a bit annoying. The command I used when building the tool for `mysql` was:
+
+```shell
+autoreconf -if && ./configure LDFLAGS="-L/usr/lib64/mysql -I/home/theodor/Projects/libpqxx-6.4.7/include" && make -j
+```
+
+Please check the build instructions in the original README for more information, as the build process is the same. Note that if you are planning to run the tool in a docker container, you do not need to build it, as the docker build file will take care of that.
+
+## Usage
+
+After building the tool, you can use it in the same way as the original `TxCheck` tool.
+For testing the tool for `mysql`, use the following steps:
+
+1. Make sure that the binary paths specified in `mysql.cc` (e.g., `mysql`, `mysqldump`, `mysqladmin`) are correct for your local system.
+2. Build the tool using the instructions in the original README.
+3. (optional) start a `mysql` server on your local machine (this avoids having to wait for the tool to spawn a new server every time):
+    ```shell
+    docker run -d -p 3306:3306 --env MYSQL_ALLOW_EMPTY_PASSWORD=yes mysql:latest
+    ```
+4. Run the tool:
+    ```shell
+    ./transfuzz --mysql-db=testdb --mysql-port=3306 --output-or-affect-num=1
+    ```
+
+## Changes from the original tool
+
+The changes made to the original tool are as follows:
+
+1. I updated some dependencies, to make the tool compile on my system.
+2. I changed the instrumentation code to add `Before Predicate Match`, `After Predicate Match` and `Predicate Match` statements. The main changes were made to the `instrumentor.cc` file.
+3. I added the dependency extraction code to handle the overwrite dependencies. The main changes were made to the `dependency_analyzer.cc` file.
+4. I updated a bit the rest of the code to make stuff work.
+
+If you really want to see the changes, I recommend using a diff tool to compare the original `TxCheck` tool with this one.
+
+
+# Original Markdown README of TxCheck
 
 ## Description
 
@@ -24,6 +74,16 @@ We provide scripts to quickly set up the necessary environments and test specifi
 - [Test TiDB 5.4.0](./docs/tidb_test.md)
 
 By following the scripts, TxCheck can find the bugs listed in [Found Bugs](#found-bugs) (given enough time). For quick evaluation, you could use the above MySQL script to set up the testing, where TxCheck might find a transactional bug in MySQL 8.0.28 within 15 minutes. 
+
+## Make TxCheck scripts work
+
+1. Install podman.
+2. Update the config to use the correct registry:
+file `/etc/containers/registries.conf`
+```
+unqualified-search-registries = ["docker.io"]
+```
+
 
 ## Build TxCheck on Fedora
 

@@ -237,7 +237,7 @@ struct dependency_analyzer
      *
      * @return True if there is a cycle, false otherwise.
      */
-    bool check_any_transaction_cycle();
+    bool check_any_transaction_cycle(bool ignore_overwrites);
 
     bool check_cycle(set<dependency_type> &edge_types);
     static bool reduce_graph_indegree(int **direct_graph, int length);

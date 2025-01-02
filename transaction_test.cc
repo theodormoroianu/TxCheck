@@ -264,7 +264,7 @@ bool transaction_test::analyze_txn_dependency(shared_ptr<dependency_analyzer> &d
     // }
     cerr << "done" << endl;
 
-    if (da->check_any_transaction_cycle() == true)
+    if (da->check_any_transaction_cycle(true) == true)
     {
         cerr << "check_any_cycle violate!!" << endl;
         return true;
